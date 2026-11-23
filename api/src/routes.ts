@@ -49,12 +49,12 @@ function page<T extends Row>(rows: T[], limit: number, signature: string, keyOf:
   return { data, next_cursor: hasMore ? encodeCursor(signature, keyOf(data[data.length - 1])) : null, limit }
 }
 
-/** Expands a CTE `page` of (price, TIN) keys into full rows. Runs only for the rows on the page. */
+/** Expands a CTE `page` of (price, TIN) keys into full rows. Runs only for the rows on the page.
+ *  Uses migration 0001 tables only, so it works on a database where 0002 is not applied. */
 const RATE_ROW_SELECT = `SELECT b.billing_code, b.billing_code_type, b.billing_code_type_version, b.name, b.description,
             b.negotiation_arrangement,
             g.negotiated_rate, p.negotiated_type, p.billing_class, p.setting, p.expiration_date,
             p.additional_information, p.service_code, p.billing_code_modifier,
-            b.source_file_id, sf.name AS source_file, sf.url AS source_file_url, sf.last_updated_on AS source_last_updated_on,
             g.item_id, g.rate_idx, g.price_idx,
             g.ein, g.tin_type, g.business_name,
             (SELECT COUNT(DISTINCT n2.npi)
@@ -75,8 +75,7 @@ const RATE_ROW_SELECT = `SELECT b.billing_code, b.billing_code_type, b.billing_c
                 ORDER BY r4.provider_group_id LIMIT ${MAX_GROUPS})) AS provider_group_ids
        FROM page g
        JOIN billing_items b ON b.item_id = g.item_id
-       JOIN negotiated_prices p ON p.item_id = g.item_id AND p.rate_idx = g.rate_idx AND p.price_idx = g.price_idx
-       LEFT JOIN source_files sf ON sf.source_file_id = b.source_file_id`
+       JOIN negotiated_prices p ON p.item_id = g.item_id AND p.rate_idx = g.rate_idx AND p.price_idx = g.price_idx`
 
 const toRateRow = (r: Row) => ({
   ...r,

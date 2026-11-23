@@ -14,9 +14,6 @@ export type RateRow = {
   additional_information: string | null
   service_code: string[] | null
   billing_code_modifier: string[] | null
-  source_file: string | null
-  source_file_url: string | null
-  source_last_updated_on: string | null
   item_id: number
   rate_idx: number
   price_idx: number

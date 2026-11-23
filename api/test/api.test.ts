@@ -95,11 +95,9 @@ describe('GET /api/search', () => {
     expect(p2.body.data.map((d: any) => d.negotiated_rate)).toEqual([100])
     expect(p2.body.next_cursor).toBeNull()
   })
-  it('returns provenance, service codes, modifiers and NPIs', async () => {
+  it('returns service codes, modifiers and NPIs', async () => {
     const r = await get('/api/search?code=99213&ein=111111111')
     expect(r.body.data.find((d: any) => d.negotiated_rate === 100)).toMatchObject({
-      source_file: 'file.json',
-      source_last_updated_on: '2026-08-31',
       service_code: ['11'],
       billing_code_modifier: ['25'],
       npis: [1000000001, 1000000002],
@@ -144,6 +142,16 @@ describe('GET /api/rates', () => {
   it('rejects a search cursor', async () => {
     const c = (await get('/api/search?code=99213&limit=1')).body.next_cursor
     expect((await get(`/api/rates?cursor=${c}`)).body.error.code).toBe('INVALID_CURSOR')
+  })
+})
+
+describe('database with only migration 0001 applied', () => {
+  it('serves every endpoint the rates page uses', async () => {
+    const db = { DB: createTestDb({ only0001: true }) }
+    for (const path of ['rates', 'rates?limit=1', 'search?code=99213', 'search?code=99213&npi=1000000003', 'suggest?q=9921', 'providers?ein=111111111&groups=10', 'codes/99213']) {
+      const res = await handle(new Request(`http://x/api/${path}`), db)
+      expect([path, res.status]).toEqual([path, 200])
+    }
   })
 })
 

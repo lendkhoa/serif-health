@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { DatabaseSync } from 'node:sqlite'
 
 /** Minimal in-memory D1 stand-in over node:sqlite (just prepare/bind/all). */
-export function createTestDb(): D1Database {
+export function createTestDb({ only0001 = false } = {}): D1Database {
   const sqlite = new DatabaseSync(':memory:')
   const read = (rel: string) => readFileSync(new URL(rel, import.meta.url), 'utf8')
   sqlite.exec(read('../migrations/0001_init.sql'))
@@ -41,6 +41,10 @@ export function createTestDb(): D1Database {
     INSERT INTO rate_provider_groups VALUES (1,3,13);
   `)
   sqlite.exec(read('../../scripts/build_code_summary.sql'))
+  if (only0001) {
+    sqlite.exec(`DROP TABLE source_files; DROP TABLE code_summary; DROP INDEX idx_provider_tins_name_nc;
+      ALTER TABLE billing_items DROP COLUMN source_file_id;`)
+  }
   return {
     prepare(sql: string) {
       let args: unknown[] = []

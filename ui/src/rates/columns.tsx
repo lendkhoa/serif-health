@@ -1,4 +1,4 @@
-import { Anchor, Badge, Group, Text, Tooltip } from '@mantine/core'
+import { Badge, Group, Text, Tooltip } from '@mantine/core'
 import type { DataTableColumnGroup } from 'mantine-datatable'
 import type { RateRow } from './types.ts'
 
@@ -83,26 +83,6 @@ export const rateColumnGroups = (sortable: boolean): DataTableColumnGroup<RateRo
       { accessor: 'provider_group_ids', title: 'Provider groups', width: 140, render: (r) => <Tags values={r.provider_group_ids} /> },
       { accessor: 'npi_count', title: 'NPI count', width: 100, textAlign: 'right', render: (r) => r.npi_count.toLocaleString() },
       { accessor: 'npis', title: 'NPIs (click row for all)', width: 270, render: (r) => <Tags values={r.npis} total={r.npi_count} max={2} /> },
-    ],
-  },
-  {
-    id: 'source',
-    title: 'Source',
-    columns: [
-      { accessor: 'source_last_updated_on', title: 'Last updated', width: 120, render: (r) => text(r.source_last_updated_on) },
-      {
-        accessor: 'source_file',
-        title: 'File',
-        width: 260,
-        render: (r) =>
-          r.source_file_url && /^https?:\/\//i.test(r.source_file_url) ? (
-            <Anchor href={r.source_file_url} target="_blank" rel="noreferrer" size="sm" onClick={(e) => e.stopPropagation()}>
-              {r.source_file ?? 'Source file'}
-            </Anchor>
-          ) : (
-            <LongText value={r.source_file} />
-          ),
-      },
     ],
   },
 ]
