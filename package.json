@@ -1,0 +1,14 @@
+{
+  "name": "serif-health",
+  "private": true,
+  "workspaces": ["api", "ui"],
+  "engines": { "node": ">=22.12.0" },
+  "scripts": {
+    "dev": "concurrently --kill-others --names ui,api \"npm:dev -w ui\" \"npm:dev -w api\"",
+    "build": "npm run build -w ui",
+    "deploy": "npm run deploy -w api"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.0"
+  }
+}
