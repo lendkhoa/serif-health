@@ -89,3 +89,33 @@ Billing items (in_network[])
 Done in 243s, 73 batches.
 ```
 
+
+## API design
+
+### Endpoints
+| API | Note |
+|---|---|
+| `GET /api/health` | Liveness check. |
+| `GET /api/search?code=&npi=&tin=&setting=&class=&sort=&limit=&cursor=` | Main search. `code` is required (exact billing code); `npi`, `tin`, `setting`, `class` are optional filters. Keyset-paginated (`limit` default 100, max 500) with an opaque cursor that includes the sort key. Returns `data` and `next_cursor`, with no `COUNT(*)`. |
+| `GET /api/summary?code=` | Context for a code: median, P25–P75, min–max, provider/org counts, histogram buckets, and breakdown by setting / billing class / negotiated type. Served from a precomputed `code_summary`. Feeds the KPI strip and charts. |
+| `GET /api/suggest?q=` | Omnibox autocomplete. Classifies the input (code, NPI, TIN, free text) and returns grouped matches (codes, organisations, providers) with counts. Free text uses FTS5 over descriptions and business names. |
+| `GET /api/codes/:code` | Billing-code metadata (type, name, descriptions) without expanding rates or providers. |
+| `GET /api/providers?npi=&tin=&limit=&cursor=` | Provider identity lookup: NPIs and the TINs they belong to. Also used to narrow the main search. |
+| `GET /api/org/:tin` | Organisation view: codes the TIN is priced on, with its rate vs. the market median per code. |
+| `GET /api/provider/:npi` | Provider view: the TINs for an NPI and its rates per code. |
+
+### Query strategy
+- **Pick the entry point by filter.** Start from the most selective indexed side:
+  - `npi` + `tin`: `provider_npis` filtered by both (most selective, preferred).
+  - `npi` only: `provider_npis → rate_provider_groups → negotiated_prices → billing_items → provider_tins`.
+  - `tin` only: `provider_tins → provider_npis → rate_provider_groups → negotiated_prices → billing_items`.
+  - code only: `billing_items (billing_code) → negotiated_prices → …`, always paginated.
+- **Keyset pagination, never `OFFSET`.** Order by a deterministic key and page with `WHERE (k1, k2, …) > (?, ?, …)`. The cursor is an opaque, validated base64url JSON object. For rate-sorted views the key is `(negotiated_rate DESC, <unique tiebreaker>)`.
+- **`limit + 1` instead of `COUNT(*)`.** Fetch one extra row to decide whether a next page exists, and return `next_cursor` only then. Approximate totals come from `code_summary`.
+- **Move join cost to ingest.** The 5-way join fans out (one rate entry × provider groups × TINs × NPIs). Build a denormalised `rates_flat` (code, TIN, business name, rate, setting, class, type, expiration, NPI count) with indexes `(billing_code, negotiated_rate DESC, id)` and `(tin_value, billing_code)`, so search, sorting and the org/provider views are single indexed range scans.
+- **One row per (TIN, rate) for the UI.** Return an NPI count and expand NPIs on demand. Return per-NPI rows only when the caller filters by `npi`.
+- **Covering indexes.** `provider_npis (npi, provider_group_id, tin_value)` and `provider_tins (tin_value, provider_group_id)`; `billing_items (billing_code, item_id)`.
+- **Precompute summaries.** Data is immutable per source file, so percentiles, histogram buckets and counts are computed at ingest into `code_summary` and cached at the edge.
+- **Provenance.** Add a `source_files` table and a `source_file_id` reference so every row can report its source file.
+- **Guardrails.** Cap `limit`, warn when a code-only result set is very large, normalise TIN (strip dashes), and dedupe rows that arise via multiple `provider_references`.
+- **Verify, then optimise.** Run `EXPLAIN QUERY PLAN` on each branch against the real data. Row-value keyset comparisons may need expanding to `OR` conditions if the planner skips the index.
