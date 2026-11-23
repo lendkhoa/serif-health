@@ -10,5 +10,13 @@
 		// Run the Worker for /api/*; everything else is served as a static asset.
 		"run_worker_first": ["/api/*"]
 	},
-	"observability": { "enabled": true }
+	"observability": { "enabled": true },
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "serif-health",
+			"database_id": "09fc014c-adc2-48c1-8ae9-62ea3bd9f2c5",
+			"migrations_dir": "migrations"
+		}
+	]
 }
