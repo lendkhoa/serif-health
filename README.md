@@ -20,6 +20,53 @@ I take a CMS Transparency in Coverage index file (Centene / Fidelis), use it to 
 - The rate file is picked by hand from the index.
 - I timeboxed the work to about 3 hours.
 
+## Requirements alignment
+
+Status of this README and project against the take-home assignment.
+
+| Requirement / deliverable | Status | Notes |
+|---|---|---|
+| Use index to find an in-network file URL | ⚠️ Partial | Stated as a goal, but the README does not yet say which index entry or file URL was chosen, or why. |
+| Fetch and ingest the rate file, normalise | ⚠️ Partial | Ingest flow is documented (key paths, schema, `make migrate-file-to-d1`), but it reads a local `FILE=` path and does not fetch the URL. |
+| API: required code, optional NPI/EIN | ⚠️ Partial | Specified as a design; only `/api/health` is implemented. |
+| UI: code input, NPI/EIN narrowing, formatted results | ⚠️ Partial | Goal and design are stated; implemented status is not. |
+| Basic error handling | ❌ Gap | Listed as goal #5 only. No error contract (status codes, validation, response shape). |
+| README: install and run | ❌ Gap | Setup is "Coming soon". |
+| README: architecture and data flow | ❌ Gap | No short description or diagram. |
+| README: assumptions, decisions, tradeoffs | ⚠️ Partial | Scattered (in-memory won't scale, query strategy); not consolidated. |
+| README: what I would improve with more time | ❌ Gap | Missing. |
+| Honest limitations | ❌ Gap | Missing, including how much of the file was loaded (the ingest supports `LIMIT_ITEMS` / `LIMIT_PROVIDERS`). |
+
+### Deviations to resolve
+- **Scope vs. implementation:** Scope says "in memory, no database" but the project uses D1. Allowed by the assignment as an extension, so document it as a deliberate decision and update Scope.
+- **API contract:** Goal uses `/search?...&ein=`; the design uses `/api/search?...&tin=`. Keep `ein` as the public name (`tin` at most as an alias) and one consistent path.
+- **Scope creep:** The API design (summary, suggest, org/provider views, FTS5, flat table) exceeds the ~3 hour timebox. Mark it as planned or move it under "what I would improve".
+- **Planned vs. shipped:** The endpoint table lists endpoints that do not exist yet. Add a Status column.
+- **Manual fetch:** The rate file is downloaded by hand. Either script the download or state this explicitly.
+
+### Priority gaps
+1. Setup: prerequisites (Node 22 via `nvm`, Python for the ingest script, Wrangler login or `LOCAL=1`) and the `make install` / `d1-migrate` / `migrate-file-to-d1` / `dev` sequence.
+2. Architecture and data flow: index → chosen file URL → ingest script → D1 → Worker API → React UI.
+3. Source traceability: name the index URL, the chosen in-network file (plan, URL, `last_updated_on`); `source_files` is only proposed, so rows do not yet carry the source file.
+4. Data coverage: state whether the load was full or partial.
+5. Error handling: 400 for missing or invalid `code`, validate NPI (10 digits) and EIN (9 digits, strip dashes), distinguish empty results from errors, and add UI error and empty states.
+6. Edge cases: leading-zero and alphanumeric codes (`0001U`, `J1745`); the same code under different `billing_code_type`; providers via `provider_references` vs inline `provider_groups`; dedupe across multiple references.
+7. UI/UX: responsive layout, search and filter controls, loading/empty/error states.
+8. Tradeoffs and improvements: in-memory vs D1, flat table, FTS, summaries, exports, multi-file ingest, trends.
+
+### Planned README structure
+```
+Overview + demo link
+Quick start (install, run, ingest)
+Architecture & data flow
+Data source & file selection (index URL, chosen file, last_updated_on, coverage)
+API (implemented) | Planned endpoints
+Error handling & edge cases
+Assumptions, decisions, tradeoffs
+Limitations / what I would improve
+Timeline / lab notes
+```
+
 ## Setup
 
 _Coming soon._
