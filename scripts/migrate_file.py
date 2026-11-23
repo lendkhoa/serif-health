@@ -7,7 +7,7 @@ in_network item at a time, which is turned into multi-row INSERT OR IGNORE state
 
 Usage:
   migrate_file.py PATH [--limit-items N] [--limit-providers N] [--start-item N]
-                  [--batch-kb 512] [--local | --dry-run] [--skip-providers] [--skip-items]
+                  [--batch-kb 512] [--source-url URL] [--last-updated-on DATE] [--local | --dry-run] [--skip-providers] [--skip-items]
 """
 import argparse
 import json
@@ -20,6 +20,7 @@ import time
 API_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "api")
 MAX_STMT_BYTES = 60_000  # D1 limit is 100KB per statement
 MAX_STMT_ROWS = 100
+SOURCE_FILE_ID = 1
 
 # Emits each element of the top-level array `key` as a compact JSON line, streaming.
 JQ_ARRAY = "fromstream(2 | truncate_stream(inputs | select(.[0][0] == $key)))"
@@ -150,10 +151,10 @@ def ingest_items(path, b, args):
             break
         b.add("billing_items",
               ["item_id", "billing_code", "billing_code_type", "billing_code_type_version",
-               "name", "description", "negotiation_arrangement"],
+               "name", "description", "negotiation_arrangement", "source_file_id"],
               [idx, item.get("billing_code"), item.get("billing_code_type"),
                item.get("billing_code_type_version"), item.get("name"), item.get("description"),
-               item.get("negotiation_arrangement")])
+               item.get("negotiation_arrangement"), SOURCE_FILE_ID])
         for r_idx, rate in enumerate(item.get("negotiated_rates", [])):
             for gid in rate.get("provider_references", []):
                 b.add("rate_provider_groups", ["item_id", "rate_idx", "provider_group_id"],
@@ -185,12 +186,17 @@ def main():
     ap.add_argument("--batch-kb", type=int, default=512, help="SQL size per wrangler call (default 512)")
     ap.add_argument("--local", action="store_true", help="use the local D1 instead of remote")
     ap.add_argument("--dry-run", action="store_true", help="parse and batch but do not execute")
+    ap.add_argument("--source-url", help="URL the file was downloaded from (stored as provenance)")
+    ap.add_argument("--last-updated-on", help="the file's last_updated_on value (stored as provenance)")
     ap.add_argument("--skip-providers", action="store_true")
     ap.add_argument("--skip-items", action="store_true")
     args = ap.parse_args()
 
     b = Batcher(args)
     t0 = time.time()
+    # One source file per database for now: every billing item references source_file_id = 1.
+    b.add("source_files", ["source_file_id", "name", "url", "last_updated_on"],
+          [SOURCE_FILE_ID, os.path.basename(args.path), args.source_url, args.last_updated_on])
     if not args.skip_providers:
         ingest_providers(args.path, b, args)
     if not args.skip_items:

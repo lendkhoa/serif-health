@@ -143,13 +143,22 @@ Done in 243s, 73 batches.
 | API | Note |
 |---|---|
 | `GET /api/health` | Liveness check. |
-| `GET /api/search?code=&npi=&tin=&setting=&class=&sort=&limit=&cursor=` | Main search. `code` is required (exact billing code); `npi`, `tin`, `setting`, `class` are optional filters. Keyset-paginated (`limit` default 100, max 500) with an opaque cursor that includes the sort key. Returns `data` and `next_cursor`, with no `COUNT(*)`. |
+| `GET /api/search?code=&npi=&ein=&setting=&class=&sort=&limit=&cursor=` | Main search. `code` is required (exact billing code); `npi`, `tin`, `setting`, `class` are optional filters. Keyset-paginated (`limit` default 100, max 500) with an opaque cursor that includes the sort key. Returns `data` and `next_cursor`, with no `COUNT(*)`. |
 | `GET /api/summary?code=` | Context for a code: median, P25–P75, min–max, provider/org counts, histogram buckets, and breakdown by setting / billing class / negotiated type. Served from a precomputed `code_summary`. Feeds the KPI strip and charts. |
 | `GET /api/suggest?q=` | Omnibox autocomplete. Classifies the input (code, NPI, TIN, free text) and returns grouped matches (codes, organisations, providers) with counts. Free text uses FTS5 over descriptions and business names. |
 | `GET /api/codes/:code` | Billing-code metadata (type, name, descriptions) without expanding rates or providers. |
 | `GET /api/providers?npi=&tin=&limit=&cursor=` | Provider identity lookup: NPIs and the TINs they belong to. Also used to narrow the main search. |
 | `GET /api/org/:tin` | Organisation view: codes the TIN is priced on, with its rate vs. the market median per code. |
 | `GET /api/provider/:npi` | Provider view: the TINs for an NPI and its rates per code. |
+
+**Status:** all endpoints above are implemented (`api/src/routes.ts`). Notes:
+- `ein` is the public name; `tin` is accepted as an alias.
+- `/api/summary` reads the precomputed `code_summary` table. Rebuild it after every ingest with `make build-summaries` (`scripts/build_code_summary.sql`); until then it returns 404. Counts only include prices with a non-null rate and the orgs/NPIs attached to them.
+- `/api/suggest` is prefix-only (code prefix, organisation name/EIN prefix, exact NPI), so each lookup is an indexed range scan. Free-text/FTS5 search is future work.
+- Search cursors embed a signature of the query (code, NPI, EIN, setting, class, sort); a cursor replayed against a different query is rejected with `INVALID_CURSOR`.
+- Search rows include `service_code`, `billing_code_modifier`, the first 25 `npis` (plus `npi_count`) and the source file (`source_file`, `source_file_url`, `source_last_updated_on`). Ingest registers a single source file per database; pass `SOURCE_URL=` / `LAST_UPDATED_ON=` to `make migrate-file-to-d1` to record them.
+- Errors share one shape, `{ "error": { "code", "message" } }`, with codes in `api/src/errors.ts`; database failures return `DB_ERROR` (500).
+- Tests: `npm test -w api` (Node 22).
 
 ### Query strategy
 - **Pick the entry point by filter.** Start from the most selective indexed side:

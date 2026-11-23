@@ -13,6 +13,7 @@ import {
 } from '@mantine/core'
 import { HandWavingIcon, MagnifyingGlass, Moon, Sun } from '@phosphor-icons/react'
 import { useEffect, useState } from 'react'
+import { apiGetWithToast } from './api.ts'
 
 export default function NavigationBar() {
   const [apiOk, setApiOk] = useState<boolean | null>(null)
@@ -21,8 +22,8 @@ export default function NavigationBar() {
   const isDark = computedColorScheme === 'dark'
 
   useEffect(() => {
-    fetch('/api/health')
-      .then((response) => setApiOk(response.ok))
+    apiGetWithToast('/api/health')
+      .then(() => setApiOk(true))
       .catch(() => setApiOk(false))
   }, [])
 
