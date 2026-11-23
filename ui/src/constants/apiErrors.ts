@@ -4,6 +4,7 @@ export const API_ERROR_MESSAGES: Record<string, string> = {
   INVALID_CODE: 'Billing codes are 1-20 letters or digits, e.g. 99213, J1745 or 0001U.',
   INVALID_NPI: 'NPI must be exactly 10 digits.',
   INVALID_EIN: 'EIN must be exactly 9 digits (dashes are fine).',
+  INVALID_GROUPS: 'Those provider groups could not be looked up.',
   INVALID_LIMIT: 'Page size must be between 1 and 500.',
   INVALID_CURSOR: 'Your results page expired. Please run the search again.',
   INVALID_SORT: 'Unsupported sort order.',
@@ -26,6 +27,7 @@ export const HTTP_STATUS_MESSAGES: Record<number, string> = {
   503: 'The API is temporarily unavailable.',
 }
 
+export const TIMEOUT_MESSAGE = 'The API took too long to respond. Add a filter or try again.'
 export const NETWORK_ERROR_MESSAGE = 'Could not reach the API. Check your connection and try again.'
 export const UNEXPECTED_RESPONSE_MESSAGE = 'The API returned an unexpected response.'
 export const UNKNOWN_ERROR_MESSAGE = 'An unexpected error occurred.'

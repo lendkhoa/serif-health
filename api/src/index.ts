@@ -28,7 +28,10 @@ export async function handle(request: Request, env: Env): Promise<Response> {
       const match = pattern.exec(url.pathname)
       if (match) {
         const params = match.slice(1).map(decodeURIComponent)
-        return Response.json(await handler(env, params, url.searchParams))
+        const body = await handler(env, params, url.searchParams)
+        // Rates only change on re-ingest, so let browsers reuse pages instead of re-querying D1.
+        const cacheable = url.pathname !== '/api/health'
+        return Response.json(body, { headers: { 'Cache-Control': cacheable ? 'public, max-age=300' : 'no-store' } })
       }
     }
     throw new ApiError(ERROR_CODES.ROUTE_NOT_FOUND, 404)

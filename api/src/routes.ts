@@ -1,10 +1,13 @@
 import { ApiError, ERROR_CODES, badRequest, notFound } from './errors'
 import {
+  MAX_GROUPS,
   decodeCursor,
+  einForms,
   encodeCursor,
   keysetWhere,
   parseCode,
   parseEin,
+  parseGroups,
   parseLimit,
   parseNpi,
   parseSort,
@@ -60,7 +63,7 @@ export async function search(db: D1Database, q: Params) {
 
   const where = ['b.billing_code = ?', 'p.negotiated_rate IS NOT NULL']
   const params: unknown[] = [code]
-  if (ein) (where.push('t.tin_value = ?'), params.push(ein))
+  if (ein) (where.push('t.tin_value IN (?, ?)'), params.push(...einForms(ein)))
   if (npi) {
     where.push(
       'EXISTS (SELECT 1 FROM provider_npis n WHERE n.provider_group_id = r.provider_group_id AND n.tin_value = t.tin_value AND n.npi = ?)',
@@ -85,33 +88,49 @@ export async function search(db: D1Database, q: Params) {
   }
 
   // One row per (rate, TIN); GROUP BY dedupes TINs reached via several provider_references.
+  // The page is chosen first, from keys only. Everything expensive (NPI lists, text columns) is
+  // looked up for at most limit + 1 rows, never for the code's whole rate x TIN fan-out.
   const rows = await all(
     db,
-    `SELECT b.billing_code, b.billing_code_type, b.name, b.description,
-            p.negotiated_rate, p.negotiated_type, p.billing_class, p.setting, p.expiration_date,
-            p.service_code, p.billing_code_modifier,
+    `WITH page AS MATERIALIZED (
+       SELECT p.item_id, p.rate_idx, p.price_idx, p.negotiated_rate,
+              t.tin_value AS ein, MIN(t.tin_type) AS tin_type, MIN(t.business_name) AS business_name
+         FROM billing_items b
+         JOIN negotiated_prices p ON p.item_id = b.item_id
+         JOIN rate_provider_groups r ON r.item_id = p.item_id AND r.rate_idx = p.rate_idx
+         JOIN provider_tins t ON t.provider_group_id = r.provider_group_id
+        WHERE ${where.join(' AND ')}
+        GROUP BY p.item_id, p.rate_idx, p.price_idx, t.tin_value
+        ORDER BY ${keyCols.map((c) => `${c.expr} ${c.dir}`).join(', ')}
+        LIMIT ?)
+     SELECT b.billing_code, b.billing_code_type, b.billing_code_type_version, b.name, b.description,
+            b.negotiation_arrangement,
+            g.negotiated_rate, p.negotiated_type, p.billing_class, p.setting, p.expiration_date,
+            p.additional_information, p.service_code, p.billing_code_modifier,
             b.source_file_id, sf.name AS source_file, sf.url AS source_file_url, sf.last_updated_on AS source_last_updated_on,
-            p.item_id, p.rate_idx, p.price_idx,
-            t.tin_value AS ein, t.business_name,
+            g.item_id, g.rate_idx, g.price_idx,
+            g.ein, g.tin_type, g.business_name,
             (SELECT COUNT(DISTINCT n2.npi)
                FROM rate_provider_groups r2
-               JOIN provider_npis n2 ON n2.provider_group_id = r2.provider_group_id AND n2.tin_value = t.tin_value
-              WHERE r2.item_id = p.item_id AND r2.rate_idx = p.rate_idx) AS npi_count,
+               JOIN provider_npis n2 ON n2.provider_group_id = r2.provider_group_id AND n2.tin_value = g.ein
+              WHERE r2.item_id = g.item_id AND r2.rate_idx = g.rate_idx) AS npi_count,
             (SELECT json_group_array(npi) FROM (
                SELECT DISTINCT n3.npi AS npi
                  FROM rate_provider_groups r3
-                 JOIN provider_npis n3 ON n3.provider_group_id = r3.provider_group_id AND n3.tin_value = t.tin_value
-                WHERE r3.item_id = p.item_id AND r3.rate_idx = p.rate_idx
-                ORDER BY n3.npi LIMIT ${NPI_PREVIEW})) AS npis
-       FROM billing_items b
+                 JOIN provider_npis n3 ON n3.provider_group_id = r3.provider_group_id AND n3.tin_value = g.ein
+                WHERE r3.item_id = g.item_id AND r3.rate_idx = g.rate_idx
+                ORDER BY n3.npi LIMIT ${NPI_PREVIEW})) AS npis,
+            (SELECT json_group_array(provider_group_id) FROM (
+               SELECT r4.provider_group_id
+                 FROM rate_provider_groups r4
+                 JOIN provider_tins t4 ON t4.provider_group_id = r4.provider_group_id AND t4.tin_value = g.ein
+                WHERE r4.item_id = g.item_id AND r4.rate_idx = g.rate_idx
+                ORDER BY r4.provider_group_id LIMIT ${MAX_GROUPS})) AS provider_group_ids
+       FROM page g
+       JOIN billing_items b ON b.item_id = g.item_id
+       JOIN negotiated_prices p ON p.item_id = g.item_id AND p.rate_idx = g.rate_idx AND p.price_idx = g.price_idx
        LEFT JOIN source_files sf ON sf.source_file_id = b.source_file_id
-       JOIN negotiated_prices p ON p.item_id = b.item_id
-       JOIN rate_provider_groups r ON r.item_id = p.item_id AND r.rate_idx = p.rate_idx
-       JOIN provider_tins t ON t.provider_group_id = r.provider_group_id
-      WHERE ${where.join(' AND ')}
-      GROUP BY p.item_id, p.rate_idx, p.price_idx, t.tin_value
-      ORDER BY ${keyCols.map((c) => `${c.expr} ${c.dir}`).join(', ')}
-      LIMIT ?`,
+      ORDER BY g.negotiated_rate ${rateDir}, g.item_id, g.rate_idx, g.price_idx, g.ein`,
     [...params, limit + 1],
   )
   const result = page(rows, limit, signature, (r) => [r.negotiated_rate, r.item_id, r.rate_idx, r.price_idx, r.ein])
@@ -121,6 +140,7 @@ export async function search(db: D1Database, q: Params) {
       ...r,
       service_code: parseJson(r.service_code),
       billing_code_modifier: parseJson(r.billing_code_modifier),
+      provider_group_ids: parseJson(r.provider_group_ids) ?? [],
       npis: parseJson(r.npis) ?? [], // first NPI_PREVIEW NPIs; see npi_count for the total
     })),
   }
@@ -204,19 +224,21 @@ export async function codeDetail(db: D1Database, rawCode: string) {
   return { code, items }
 }
 
-// GET /api/providers?npi=&ein=&limit=&cursor=
+// GET /api/providers?npi=&ein=&groups=&limit=   (groups: comma-separated provider_group_ids to narrow by)&cursor=
 export async function providers(db: D1Database, q: Params) {
   const npi = parseNpi(q.get('npi'))
   const ein = parseEin(q.get('ein') ?? q.get('tin'))
   if (npi === undefined && ein === undefined) throw badRequest(ERROR_CODES.MISSING_FILTER)
   const limit = parseLimit(q.get('limit'))
-  const signature = JSON.stringify(['providers', npi, ein])
+  const groups = parseGroups(q.get('groups'))
+  const signature = JSON.stringify(['providers', npi, ein, groups])
   const cursor = decodeCursor(q.get('cursor'), signature, 2)
 
   const where: string[] = []
   const params: unknown[] = []
   if (npi !== undefined) (where.push('n.npi = ?'), params.push(npi))
-  if (ein !== undefined) (where.push('n.tin_value = ?'), params.push(ein))
+  if (ein !== undefined) (where.push('n.tin_value IN (?, ?)'), params.push(...einForms(ein)))
+  if (groups) (where.push(`n.provider_group_id IN (${groups.map(() => '?').join(',')})`), params.push(...groups))
   if (cursor) {
     const ks = keysetWhere(
       [
@@ -302,16 +324,16 @@ export async function org(db: D1Database, rawEin: string, q: Params) {
   if (!ein) throw badRequest(ERROR_CODES.INVALID_EIN)
   const info = await first(
     db,
-    `SELECT MIN(business_name) AS business_name, COUNT(DISTINCT provider_group_id) AS group_count
-       FROM provider_tins WHERE tin_value = ?`,
-    [ein],
+    `SELECT MIN(tin_value) AS tin_value, MIN(business_name) AS business_name, COUNT(DISTINCT provider_group_id) AS group_count
+       FROM provider_tins WHERE tin_value IN (?, ?)`,
+    einForms(ein),
   )
   if (!info || info.group_count === 0) throw notFound()
   const rates = await entityRates(
     db,
     'org',
     `SELECT provider_group_id FROM provider_tins WHERE tin_value = ?`,
-    ein,
+    info.tin_value,
     q,
   )
   return { ein, business_name: info.business_name, ...rates }

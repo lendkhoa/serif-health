@@ -2,6 +2,7 @@ import { ERROR_CODES, badRequest } from './errors'
 
 export const DEFAULT_LIMIT = 100
 export const MAX_LIMIT = 500
+export const MAX_GROUPS = 25
 
 export function parseCode(raw: string | null): string {
   const value = raw?.trim() ?? ''
@@ -17,12 +18,24 @@ export function parseNpi(raw: string | null): number | undefined {
   return Number(value)
 }
 
-/** EIN/TIN as stored (digits only, no dashes). */
+/** EIN/TIN normalised to digits only. Use einForms() to match it against stored values. */
 export function parseEin(raw: string | null): string | undefined {
   const value = raw?.trim().replace(/-/g, '')
   if (!value) return undefined
   if (!/^\d{9}$/.test(value)) throw badRequest(ERROR_CODES.INVALID_EIN)
   return value
+}
+
+/** Files publish EINs both ways ("123456789" and "12-3456789"); match either, using the index. */
+export const einForms = (ein: string): [string, string] => [ein, `${ein.slice(0, 2)}-${ein.slice(2)}`]
+
+export function parseGroups(raw: string | null): number[] | undefined {
+  if (!raw) return undefined
+  const ids = raw.split(',')
+  if (ids.length > MAX_GROUPS || !ids.every((id) => /^\d{1,15}$/.test(id))) {
+    throw badRequest(ERROR_CODES.INVALID_GROUPS)
+  }
+  return ids.map(Number)
 }
 
 export function parseLimit(raw: string | null, fallback = DEFAULT_LIMIT): number {

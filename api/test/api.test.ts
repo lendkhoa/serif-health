@@ -51,6 +51,37 @@ describe('GET /api/search', () => {
     const byNpi = await get('/api/search?code=99213&npi=1000000003')
     expect(byNpi.body.data).toHaveLength(1)
   })
+  it('matches EINs stored with a dash, typed either way', async () => {
+    for (const ein of ['444444444', '44-4444444']) {
+      const r = await get(`/api/search?code=DASH1&ein=${ein}`)
+      expect(r.body.data.map((d: any) => d.ein)).toEqual(['44-4444444'])
+      expect((await get(`/api/providers?ein=${ein}`)).body.data).toHaveLength(1)
+      expect((await get(`/api/org/${ein}`)).body.data).toHaveLength(1)
+    }
+  })
+  it('returns the remaining source-file columns', async () => {
+    const r = await get('/api/search?code=99213&ein=111111111&sort=rate_asc')
+    expect(r.body.data[0]).toMatchObject({
+      billing_code_type_version: '2026',
+      negotiation_arrangement: 'negotiated',
+      tin_type: 'ein',
+      provider_group_ids: [10, 12],
+    })
+    expect(r.body.data[0]).toHaveProperty('additional_information')
+  })
+  it('visits every row exactly once across pages, in both directions', async () => {
+    for (const sort of ['rate_desc', 'rate_asc']) {
+      const all = (await get(`/api/search?code=99213&sort=${sort}`)).body.data
+      const seen: any[] = []
+      let cursor: string | null = ''
+      while (cursor !== null) {
+        const r: any = await get(`/api/search?code=99213&sort=${sort}&limit=1&cursor=${cursor}`)
+        seen.push(...r.body.data)
+        cursor = r.body.next_cursor
+      }
+      expect(seen).toEqual(all)
+    }
+  })
   it('empty result is 200, not an error', async () => {
     const r = await get('/api/search?code=00000')
     expect(r.status).toBe(200)
@@ -146,6 +177,11 @@ describe('GET /api/codes/:code', () => {
 describe('GET /api/providers', () => {
   it('needs a filter', async () => {
     expect((await get('/api/providers')).body.error.code).toBe('MISSING_FILTER')
+  })
+  it('narrows by provider group', async () => {
+    expect((await get('/api/providers?ein=111111111&groups=12')).body.data).toHaveLength(1)
+    expect((await get('/api/providers?ein=111111111&groups=10,12')).body.data).toHaveLength(2)
+    expect((await get('/api/providers?ein=111111111&groups=x')).body.error.code).toBe('INVALID_GROUPS')
   })
   it('looks up by npi', async () => {
     const r = await get('/api/providers?npi=1000000001')

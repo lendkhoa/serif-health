@@ -24,6 +24,12 @@ export function createTestDb(): D1Database {
     INSERT INTO provider_npis VALUES (10,'111111111',1000000001), (10,'111111111',1000000002),
       (11,'222222222',1000000003), (12,'111111111',1000000001);
     INSERT INTO rate_provider_groups VALUES (1,0,10),(1,0,12),(1,1,11),(1,2,10),(2,0,11);
+    -- EIN published with a dash, as in the real Fidelis file
+    INSERT INTO billing_items (item_id,billing_code,name) VALUES (4,'DASH1','Dashed');
+    INSERT INTO negotiated_prices (item_id,rate_idx,price_idx,negotiated_rate) VALUES (4,0,0,10);
+    INSERT INTO provider_tins VALUES (14,'ein','44-4444444','Delta Dash');
+    INSERT INTO provider_npis VALUES (14,'44-4444444',1000000010);
+    INSERT INTO rate_provider_groups VALUES (4,0,14);
     -- provider only attached to a rate with a null price: must not count in summaries
     INSERT INTO provider_tins VALUES (13,'ein','333333333','Gamma Null');
     INSERT INTO provider_npis VALUES (13,'333333333',1000000009);
