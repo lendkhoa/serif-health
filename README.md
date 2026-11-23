@@ -22,3 +22,8 @@ I take a CMS Transparency in Coverage index file (Centene / Fidelis), use it to 
 ## Setup
 
 _Coming soon._
+
+# Timeline
+2026-11-22 Setup scaffold, backend and ui
+![setup-project](./assets/2026-11-22.png)
+
