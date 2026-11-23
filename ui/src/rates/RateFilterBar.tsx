@@ -11,8 +11,9 @@ type Errors = { code?: string; npi?: string; ein?: string }
 // Same rules as the API, checked here so bad input never costs a request.
 function validate(f: RateFilters): Errors {
   const errors: Errors = {}
-  if (!f.code) errors.code = API_ERROR_MESSAGES.MISSING_CODE
-  else if (!/^[A-Za-z0-9]{1,20}$/.test(f.code)) errors.code = API_ERROR_MESSAGES.INVALID_CODE
+  const narrowed = f.npi || f.ein || f.setting || f.billingClass
+  if (!f.code && narrowed) errors.code = 'Add a billing code to use these filters.'
+  else if (f.code && !/^[A-Za-z0-9]{1,20}$/.test(f.code)) errors.code = API_ERROR_MESSAGES.INVALID_CODE
   if (f.npi && !/^\d{10}$/.test(f.npi)) errors.npi = API_ERROR_MESSAGES.INVALID_NPI
   if (f.ein && !/^\d{9}$/.test(f.ein.replace(/-/g, ''))) errors.ein = API_ERROR_MESSAGES.INVALID_EIN
   return errors
@@ -55,7 +56,6 @@ export default function RateFilterBar({ applied, onApply }: { applied: RateFilte
         <Autocomplete
           label="Billing code"
           placeholder="e.g. 99213"
-          required
           w={200}
           value={draft.code}
           onChange={(v) => set('code', v)}

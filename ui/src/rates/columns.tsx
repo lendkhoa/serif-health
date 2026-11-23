@@ -46,7 +46,7 @@ function Tags({ values, total, max = 3 }: { values: (string | number)[] | null; 
 }
 
 /** Every stored field of the source file, grouped the way the JSON nests them. */
-export const RATE_COLUMN_GROUPS: DataTableColumnGroup<RateRow>[] = [
+export const rateColumnGroups = (sortable: boolean): DataTableColumnGroup<RateRow>[] => [
   {
     id: 'item',
     title: 'Billing item',
@@ -63,7 +63,7 @@ export const RATE_COLUMN_GROUPS: DataTableColumnGroup<RateRow>[] = [
     id: 'price',
     title: 'Negotiated price',
     columns: [
-      { accessor: 'negotiated_rate', title: 'Rate', width: 130, sortable: true, textAlign: 'right', render: (r) => <Text fw={600} size="sm" style={{ fontVariantNumeric: 'tabular-nums' }}>{formatRate(r)}</Text> },
+      { accessor: 'negotiated_rate', title: 'Rate', width: 130, sortable, textAlign: 'right', render: (r) => <Text fw={600} size="sm" style={{ fontVariantNumeric: 'tabular-nums' }}>{formatRate(r)}</Text> },
       { accessor: 'negotiated_type', title: 'Rate type', width: 120, render: (r) => text(r.negotiated_type) },
       { accessor: 'billing_class', title: 'Class', width: 120, render: (r) => text(r.billing_class) },
       { accessor: 'setting', title: 'Setting', width: 110, render: (r) => text(r.setting) },

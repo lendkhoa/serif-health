@@ -30,6 +30,11 @@ export function createTestDb(): D1Database {
     INSERT INTO provider_tins VALUES (14,'ein','44-4444444','Delta Dash');
     INSERT INTO provider_npis VALUES (14,'44-4444444',1000000010);
     INSERT INTO rate_provider_groups VALUES (4,0,14);
+    -- one price shared by two TINs
+    INSERT INTO billing_items (item_id,billing_code,name) VALUES (5,'MULTI','Two TINs');
+    INSERT INTO negotiated_prices (item_id,rate_idx,price_idx,negotiated_rate) VALUES (5,0,0,7);
+    INSERT INTO provider_tins VALUES (15,'ein','555555555','Eps'), (15,'ein','666666666','Zeta');
+    INSERT INTO rate_provider_groups VALUES (5,0,15);
     -- provider only attached to a rate with a null price: must not count in summaries
     INSERT INTO provider_tins VALUES (13,'ein','333333333','Gamma Null');
     INSERT INTO provider_npis VALUES (13,'333333333',1000000009);

@@ -49,6 +49,43 @@ function page<T extends Row>(rows: T[], limit: number, signature: string, keyOf:
   return { data, next_cursor: hasMore ? encodeCursor(signature, keyOf(data[data.length - 1])) : null, limit }
 }
 
+/** Expands a CTE `page` of (price, TIN) keys into full rows. Runs only for the rows on the page. */
+const RATE_ROW_SELECT = `SELECT b.billing_code, b.billing_code_type, b.billing_code_type_version, b.name, b.description,
+            b.negotiation_arrangement,
+            g.negotiated_rate, p.negotiated_type, p.billing_class, p.setting, p.expiration_date,
+            p.additional_information, p.service_code, p.billing_code_modifier,
+            b.source_file_id, sf.name AS source_file, sf.url AS source_file_url, sf.last_updated_on AS source_last_updated_on,
+            g.item_id, g.rate_idx, g.price_idx,
+            g.ein, g.tin_type, g.business_name,
+            (SELECT COUNT(DISTINCT n2.npi)
+               FROM rate_provider_groups r2
+               JOIN provider_npis n2 ON n2.provider_group_id = r2.provider_group_id AND n2.tin_value = g.ein
+              WHERE r2.item_id = g.item_id AND r2.rate_idx = g.rate_idx) AS npi_count,
+            (SELECT json_group_array(npi) FROM (
+               SELECT DISTINCT n3.npi AS npi
+                 FROM rate_provider_groups r3
+                 JOIN provider_npis n3 ON n3.provider_group_id = r3.provider_group_id AND n3.tin_value = g.ein
+                WHERE r3.item_id = g.item_id AND r3.rate_idx = g.rate_idx
+                ORDER BY n3.npi LIMIT ${NPI_PREVIEW})) AS npis,
+            (SELECT json_group_array(provider_group_id) FROM (
+               SELECT r4.provider_group_id
+                 FROM rate_provider_groups r4
+                 JOIN provider_tins t4 ON t4.provider_group_id = r4.provider_group_id AND t4.tin_value = g.ein
+                WHERE r4.item_id = g.item_id AND r4.rate_idx = g.rate_idx
+                ORDER BY r4.provider_group_id LIMIT ${MAX_GROUPS})) AS provider_group_ids
+       FROM page g
+       JOIN billing_items b ON b.item_id = g.item_id
+       JOIN negotiated_prices p ON p.item_id = g.item_id AND p.rate_idx = g.rate_idx AND p.price_idx = g.price_idx
+       LEFT JOIN source_files sf ON sf.source_file_id = b.source_file_id`
+
+const toRateRow = (r: Row) => ({
+  ...r,
+  service_code: parseJson(r.service_code),
+  billing_code_modifier: parseJson(r.billing_code_modifier),
+  provider_group_ids: parseJson(r.provider_group_ids) ?? [],
+  npis: parseJson(r.npis) ?? [], // first NPI_PREVIEW NPIs; see npi_count for the total
+})
+
 // GET /api/search?code=&npi=&ein=&setting=&class=&sort=&limit=&cursor=
 export async function search(db: D1Database, q: Params) {
   const code = parseCode(q.get('code'))
@@ -103,47 +140,61 @@ export async function search(db: D1Database, q: Params) {
         GROUP BY p.item_id, p.rate_idx, p.price_idx, t.tin_value
         ORDER BY ${keyCols.map((c) => `${c.expr} ${c.dir}`).join(', ')}
         LIMIT ?)
-     SELECT b.billing_code, b.billing_code_type, b.billing_code_type_version, b.name, b.description,
-            b.negotiation_arrangement,
-            g.negotiated_rate, p.negotiated_type, p.billing_class, p.setting, p.expiration_date,
-            p.additional_information, p.service_code, p.billing_code_modifier,
-            b.source_file_id, sf.name AS source_file, sf.url AS source_file_url, sf.last_updated_on AS source_last_updated_on,
-            g.item_id, g.rate_idx, g.price_idx,
-            g.ein, g.tin_type, g.business_name,
-            (SELECT COUNT(DISTINCT n2.npi)
-               FROM rate_provider_groups r2
-               JOIN provider_npis n2 ON n2.provider_group_id = r2.provider_group_id AND n2.tin_value = g.ein
-              WHERE r2.item_id = g.item_id AND r2.rate_idx = g.rate_idx) AS npi_count,
-            (SELECT json_group_array(npi) FROM (
-               SELECT DISTINCT n3.npi AS npi
-                 FROM rate_provider_groups r3
-                 JOIN provider_npis n3 ON n3.provider_group_id = r3.provider_group_id AND n3.tin_value = g.ein
-                WHERE r3.item_id = g.item_id AND r3.rate_idx = g.rate_idx
-                ORDER BY n3.npi LIMIT ${NPI_PREVIEW})) AS npis,
-            (SELECT json_group_array(provider_group_id) FROM (
-               SELECT r4.provider_group_id
-                 FROM rate_provider_groups r4
-                 JOIN provider_tins t4 ON t4.provider_group_id = r4.provider_group_id AND t4.tin_value = g.ein
-                WHERE r4.item_id = g.item_id AND r4.rate_idx = g.rate_idx
-                ORDER BY r4.provider_group_id LIMIT ${MAX_GROUPS})) AS provider_group_ids
-       FROM page g
-       JOIN billing_items b ON b.item_id = g.item_id
-       JOIN negotiated_prices p ON p.item_id = g.item_id AND p.rate_idx = g.rate_idx AND p.price_idx = g.price_idx
-       LEFT JOIN source_files sf ON sf.source_file_id = b.source_file_id
+     ${RATE_ROW_SELECT}
       ORDER BY g.negotiated_rate ${rateDir}, g.item_id, g.rate_idx, g.price_idx, g.ein`,
     [...params, limit + 1],
   )
   const result = page(rows, limit, signature, (r) => [r.negotiated_rate, r.item_id, r.rate_idx, r.price_idx, r.ein])
   return {
     ...result,
-    data: result.data.map((r) => ({
-      ...r,
-      service_code: parseJson(r.service_code),
-      billing_code_modifier: parseJson(r.billing_code_modifier),
-      provider_group_ids: parseJson(r.provider_group_ids) ?? [],
-      npis: parseJson(r.npis) ?? [], // first NPI_PREVIEW NPIs; see npi_count for the total
-    })),
+    data: result.data.map(toRateRow),
   }
+}
+
+// GET /api/rates?limit=&cursor=   (every rate in file order; unfiltered and unsorted on purpose)
+export async function rates(db: D1Database, q: Params) {
+  const limit = parseLimit(q.get('limit'))
+  const signature = JSON.stringify(['rates'])
+  const cursor = decodeCursor(q.get('cursor'), signature, 4)
+  const take = limit + 1
+  const ks = cursor
+    ? keysetWhere(
+        ['item_id', 'rate_idx', 'price_idx', 'ein'].map((expr) => ({ expr, dir: 'ASC' as const })),
+        cursor,
+      )
+    : null
+
+  // `prices` walks the primary key and stops after limit + 2 entries. Each has at least one TIN, so
+  // that always fills a page; the extra one covers the cursor's own price having no TINs left.
+  const rows = await all(
+    db,
+    `WITH prices AS MATERIALIZED (
+       SELECT p.item_id, p.rate_idx, p.price_idx, p.negotiated_rate
+         FROM negotiated_prices p
+        WHERE p.negotiated_rate IS NOT NULL
+          ${cursor ? 'AND (p.item_id, p.rate_idx, p.price_idx) >= (?, ?, ?)' : ''}
+          AND EXISTS (SELECT 1 FROM rate_provider_groups r
+                        JOIN provider_tins t ON t.provider_group_id = r.provider_group_id
+                       WHERE r.item_id = p.item_id AND r.rate_idx = p.rate_idx)
+        ORDER BY p.item_id, p.rate_idx, p.price_idx
+        LIMIT ?),
+     page AS MATERIALIZED (
+       SELECT * FROM (
+         SELECT p.item_id, p.rate_idx, p.price_idx, p.negotiated_rate,
+                t.tin_value AS ein, MIN(t.tin_type) AS tin_type, MIN(t.business_name) AS business_name
+           FROM prices p
+           JOIN rate_provider_groups r ON r.item_id = p.item_id AND r.rate_idx = p.rate_idx
+           JOIN provider_tins t ON t.provider_group_id = r.provider_group_id
+          GROUP BY p.item_id, p.rate_idx, p.price_idx, t.tin_value)
+        ${ks ? `WHERE ${ks.sql}` : ''}
+        ORDER BY item_id, rate_idx, price_idx, ein
+        LIMIT ?)
+     ${RATE_ROW_SELECT}
+      ORDER BY g.item_id, g.rate_idx, g.price_idx, g.ein`,
+    [...(cursor ? cursor.slice(0, 3) : []), take + 1, ...(ks?.params ?? []), take],
+  )
+  const result = page(rows, limit, signature, (r) => [r.item_id, r.rate_idx, r.price_idx, r.ein])
+  return { ...result, data: result.data.map(toRateRow) }
 }
 
 // GET /api/summary?code=   (reads the precomputed code_summary; see scripts/build_code_summary.sql)

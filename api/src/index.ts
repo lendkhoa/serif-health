@@ -10,6 +10,7 @@ type Handler = (env: Env, params: string[], query: URLSearchParams) => Promise<u
 const ROUTES: [RegExp, Handler][] = [
   [/^\/api\/health$/, async () => ({ ok: true })],
   [/^\/api\/search$/, (e, _p, q) => routes.search(e.DB, q)],
+  [/^\/api\/rates$/, (e, _p, q) => routes.rates(e.DB, q)],
   [/^\/api\/summary$/, (e, _p, q) => routes.summary(e.DB, q)],
   [/^\/api\/suggest$/, (e, _p, q) => routes.suggest(e.DB, q)],
   [/^\/api\/providers$/, (e, _p, q) => routes.providers(e.DB, q)],
@@ -29,9 +30,8 @@ export async function handle(request: Request, env: Env): Promise<Response> {
       if (match) {
         const params = match.slice(1).map(decodeURIComponent)
         const body = await handler(env, params, url.searchParams)
-        // Rates only change on re-ingest, so let browsers reuse pages instead of re-querying D1.
-        const cacheable = url.pathname !== '/api/health'
-        return Response.json(body, { headers: { 'Cache-Control': cacheable ? 'public, max-age=300' : 'no-store' } })
+        // Nothing can invalidate browser caches on re-ingest; the UI keeps its own per-session page cache.
+        return Response.json(body, { headers: { 'Cache-Control': 'no-store' } })
       }
     }
     throw new ApiError(ERROR_CODES.ROUTE_NOT_FOUND, 404)

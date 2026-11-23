@@ -8,7 +8,7 @@ const MAX_CACHED_PAGES = 20
 export type RatesQuery = { filters: RateFilters; sort: RateSort; limit: number }
 
 /**
- * Cursor-paginated /api/search. Only the visible page is requested, nothing is prefetched or
+ * Cursor-paginated rates: /api/search for a billing code, /api/rates (everything) without one. Only the visible page is requested, nothing is prefetched or
  * retried automatically, and a superseded request is aborted. Recent pages are kept in a small
  * cache so going back costs the server nothing.
  */
@@ -27,10 +27,8 @@ export function useRates(query: RatesQuery) {
 
   const cursor = paging.cursors[paging.page]
   const key = `${queryKey}|${cursor ?? ''}`
-  const enabled = filters.code !== ''
 
   useEffect(() => {
-    if (!enabled) return
     const cached = cache.current.get(key)
     if (cached) {
       setResult({ key, data: cached, error: false })
@@ -41,8 +39,10 @@ export function useRates(query: RatesQuery) {
       try {
         const [f, s, l] = JSON.parse(queryKey) as [RateFilters, RateSort, number]
         const data = await apiGet<Page<RateRow>>(
-          '/api/search',
-          { code: f.code, npi: f.npi, ein: f.ein, setting: f.setting, class: f.billingClass, sort: s, limit: l, cursor },
+          f.code ? '/api/search' : '/api/rates',
+          f.code
+            ? { code: f.code, npi: f.npi, ein: f.ein, setting: f.setting, class: f.billingClass, sort: s, limit: l, cursor }
+            : { limit: l, cursor },
           controller.signal,
         )
         if (controller.signal.aborted) return
@@ -59,10 +59,10 @@ export function useRates(query: RatesQuery) {
       clearTimeout(timer)
       controller.abort()
     }
-  }, [enabled, key, queryKey, cursor, attempt])
+  }, [key, queryKey, cursor, attempt])
 
   const current = result?.key === key ? result : null
-  const loading = enabled && !current
+  const loading = !current
   const nextCursor = current?.data?.next_cursor ?? null
 
   const next = useCallback(() => {
@@ -78,7 +78,7 @@ export function useRates(query: RatesQuery) {
 
   return {
     // Keep the old rows under the loading overlay rather than flashing an empty table.
-    rows: enabled ? ((current ?? (loading ? result : null))?.data?.data ?? []) : [],
+    rows: (current ?? result)?.data?.data ?? [],
     loading,
     failed: current?.error ?? false,
     page: paging.page,

@@ -1,9 +1,9 @@
 import { Button, Container, Group, Select, Stack, Text } from '@mantine/core'
 import { DataTable, type DataTableSortStatus } from 'mantine-datatable'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import RateFilterBar from './RateFilterBar.tsx'
 import RowDetails from './RowDetails.tsx'
-import { RATE_COLUMN_GROUPS } from './columns.tsx'
+import { rateColumnGroups } from './columns.tsx'
 import { EMPTY_FILTERS, rowId, type RateRow, type RateSort } from './types.ts'
 import { useRates } from './useRates.ts'
 
@@ -21,15 +21,18 @@ export default function RatesPage() {
     viewport.current?.scrollTo({ top: 0 })
   }, [page])
 
+  // Browsing all rates is in file order; sorting by rate is only affordable within one code.
+  const searching = filters.code !== ''
+  const groups = useMemo(() => rateColumnGroups(searching), [searching])
   const sortStatus: DataTableSortStatus<RateRow> = {
-    columnAccessor: 'negotiated_rate',
+    columnAccessor: searching ? 'negotiated_rate' : '',
     direction: sort === 'rate_asc' ? 'asc' : 'desc',
   }
-  const emptyText = !filters.code
-    ? 'Enter a billing code to see its negotiated rates'
-    : failed
-      ? 'The rates could not be loaded'
-      : 'No rates match these filters'
+  const emptyText = failed
+    ? 'The rates could not be loaded'
+    : searching
+      ? 'No rates match these filters'
+      : 'No rates have been loaded into the database'
   const first = page * limit + 1
 
   return (
@@ -38,7 +41,7 @@ export default function RatesPage() {
         <RateFilterBar applied={filters} onApply={setFilters} />
 
         <DataTable<RateRow>
-          height="max(360px, calc(100dvh - 290px))"
+          height="max(360px, calc(100dvh - 310px))"
           withTableBorder
           withColumnBorders
           striped
@@ -46,7 +49,7 @@ export default function RatesPage() {
           borderRadius="sm"
           verticalSpacing="xs"
           pinFirstColumn
-          groups={RATE_COLUMN_GROUPS}
+          groups={groups}
           records={rows}
           idAccessor={rowId}
           fetching={loading}

@@ -124,6 +124,29 @@ describe('GET /api/search', () => {
   })
 })
 
+describe('GET /api/rates', () => {
+  it('browses every priced row once, whatever the page size', async () => {
+    const all = (await get('/api/rates')).body.data
+    expect(all.map((d: any) => [d.billing_code, d.negotiated_rate])).toEqual([
+      ['99213', 100], ['99213', 150], ['99213', 200], ['J1745', 50], ['DASH1', 10], ['MULTI', 7], ['MULTI', 7],
+    ])
+    for (const limit of [1, 2, 3]) {
+      const seen: any[] = []
+      let cursor: string | null = ''
+      while (cursor !== null) {
+        const r: any = await get(`/api/rates?limit=${limit}&cursor=${cursor}`)
+        seen.push(...r.body.data)
+        cursor = r.body.next_cursor
+      }
+      expect(seen).toEqual(all)
+    }
+  })
+  it('rejects a search cursor', async () => {
+    const c = (await get('/api/search?code=99213&limit=1')).body.next_cursor
+    expect((await get(`/api/rates?cursor=${c}`)).body.error.code).toBe('INVALID_CURSOR')
+  })
+})
+
 describe('GET /api/summary', () => {
   it('summarises a code', async () => {
     const r = await get('/api/summary?code=99213')

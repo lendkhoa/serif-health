@@ -39,7 +39,7 @@ export async function apiGet<T>(path: string, query: Query = {}, signal?: AbortS
 
   let response: Response
   try {
-    response = await fetch(qs ? `${path}?${qs}` : path, { signal: combined })
+    response = await fetch(qs ? `${path}?${qs}` : path, { signal: combined, cache: 'no-store' })
   } catch (error) {
     if (signal?.aborted) throw error
     if (timeout.aborted) throw new ApiRequestError(TIMEOUT_MESSAGE, 0)
