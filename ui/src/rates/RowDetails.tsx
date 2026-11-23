@@ -1,5 +1,6 @@
 import { Badge, Button, Group, Stack, Text } from '@mantine/core'
 import { useEffect, useRef, useState } from 'react'
+import { businessHref, chargesHref } from '../lenses.ts'
 import { apiGet, notifyApiError } from '../api.ts'
 import type { Page, RateRow } from './types.ts'
 
@@ -40,10 +41,20 @@ export default function RowDetails({ row }: { row: RateRow }) {
 
   return (
     <Stack gap="xs" p="md" maw="min(1100px, 92vw)" style={{ position: 'sticky', left: 0 }}>
+      <Button component="a" href={chargesHref(row.billing_code, row.additional_information)} size="xs" variant="light" w="fit-content">
+        Compare businesses for this procedure
+      </Button>
+      {row.business_name && (
+        <Button component="a" href={businessHref(row.business_name)} size="xs" variant="light" w="fit-content">
+          All procedures at this business
+        </Button>
+      )}
       {row.description && <Text size="sm">{row.description}</Text>}
       {row.additional_information && (
         <Text size="sm" c="dimmed">
-          Additional information: {row.additional_information}
+          {row.billing_code_type === 'RC'
+            ? `This price is for procedure ${row.additional_information}. The name and description above are how the file labels this revenue code.`
+            : `Additional information: ${row.additional_information}`}
         </Text>
       )}
       <Text size="sm" fw={600}>

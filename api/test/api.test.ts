@@ -145,10 +145,81 @@ describe('GET /api/rates', () => {
   })
 })
 
+describe('GET /api/charges', () => {
+  it('lists a row per price and provider group, skipping null rates', async () => {
+    const r = await get('/api/charges?code=99213')
+    expect(r.body.item).toMatchObject({ name: 'Office visit', item_count: 1 })
+    expect(r.body.next_cursor).toBeNull()
+    expect(r.body.data.map((d: any) => [d.business_name, d.negotiated_rate]).sort()).toEqual([
+      ['Alpha Clinic', 100], // groups 10 and 12; clients count each business once
+      ['Alpha Clinic', 100],
+      ['Alpha Clinic', 200],
+      ['Beta Hospital', 150],
+    ])
+    expect(r.body.data.find((d: any) => d.negotiated_rate === 100)).toMatchObject({ service_code: ['11'], billing_code_modifier: ['25'] })
+  })
+  it('validates and 404s', async () => {
+    expect((await get('/api/charges')).body.error.code).toBe('MISSING_CODE')
+    expect((await get('/api/charges?code=99213&cursor=zzz')).body.error.code).toBe('INVALID_CURSOR')
+    expect((await get('/api/charges?code=NOPE1')).status).toBe(404)
+  })
+})
+
+describe('GET /api/charges paging', () => {
+  it('is deterministic and complete at any page size', async () => {
+    const all = (await get('/api/charges?code=99213')).body.data
+    for (const limit of [1, 2, 3]) {
+      const seen: any[] = []
+      let cursor: string | null = ''
+      while (cursor !== null) {
+        const r: any = await get(`/api/charges?code=99213&limit=${limit}&cursor=${cursor}`)
+        seen.push(...r.body.data)
+        cursor = r.body.next_cursor
+      }
+      expect(seen).toEqual(all)
+    }
+  })
+})
+
+describe('GET /api/business', () => {
+  const db = { DB: createTestDb({ compare: true }) }
+  const get = async (path: string) => {
+    const res = await handle(new Request(`http://x${path}`), db)
+    return { status: res.status, body: (await res.json()) as any }
+  }
+  it('compares exact variants, each business at its own median', async () => {
+    const r = await get('/api/business?name=alpha%20clinic')
+    expect(r.body).toMatchObject({ name: 'Alpha Clinic', ein_count: 1, next_cursor: null })
+    const find = (cls: string) => r.body.data.filter((d: any) => d.code === 'CMP1' && d.billing_class === cls)
+    // Alpha has 10 and 30 (median 20); Beta 40, Delta 60: market median 40
+    expect(find('professional')).toMatchObject([{ rate: 20, median: 40, low: 20, high: 60, businesses: 3, place: ['11'], modifier: [] }])
+    // a different class is a different procedure, priced by Alpha alone
+    expect(find('institutional')).toMatchObject([{ rate: 500, median: 500, businesses: 1 }])
+  })
+  it('pages by code without losing or repeating procedures', async () => {
+    const all = (await get('/api/business?name=Alpha%20Clinic')).body.data
+    const first = await get('/api/business?name=Alpha%20Clinic&limit=1')
+    expect(first.body.next_cursor).toBeTruthy()
+    const second = await get(`/api/business?name=Alpha%20Clinic&limit=1&cursor=${first.body.next_cursor}`)
+    expect(second.body.next_cursor).toBeNull()
+    expect([...first.body.data, ...second.body.data]).toEqual(all)
+    expect((await get(`/api/business?name=Beta%20Hospital&cursor=${first.body.next_cursor}`)).body.error.code).toBe('INVALID_CURSOR')
+    expect((await get('/api/business?name=Alpha%20Clinic&limit=51')).body.error.code).toBe('INVALID_LIMIT')
+  })
+  it('does not list variants the business has no rate for', async () => {
+    const r = await get('/api/business?name=Beta%20Hospital')
+    expect(r.body.data.filter((d: any) => d.code === 'CMP1')).toHaveLength(1)
+  })
+  it('validates and 404s', async () => {
+    expect((await get('/api/business')).body.error.code).toBe('MISSING_NAME')
+    expect((await get('/api/business?name=nobody')).status).toBe(404)
+  })
+})
+
 describe('database with only migration 0001 applied', () => {
   it('serves every endpoint the rates page uses', async () => {
     const db = { DB: createTestDb({ only0001: true }) }
-    for (const path of ['rates', 'rates?limit=1', 'search?code=99213', 'search?code=99213&npi=1000000003', 'suggest?q=9921', 'providers?ein=111111111&groups=10', 'codes/99213']) {
+    for (const path of ['rates', 'rates?limit=1', 'search?code=99213', 'search?code=99213&npi=1000000003', 'suggest?q=9921', 'providers?ein=111111111&groups=10', 'codes/99213', 'charges?code=99213', 'business?name=Alpha%20Clinic']) {
       const res = await handle(new Request(`http://x/api/${path}`), db)
       expect([path, res.status]).toEqual([path, 200])
     }

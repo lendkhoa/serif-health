@@ -196,6 +196,176 @@ export async function rates(db: D1Database, q: Params) {
   return { ...result, data: result.data.map(toRateRow) }
 }
 
+const CHARGES_PAGE = 2000
+
+// GET /api/charges?code=&limit=&cursor=   (every dollar rate per business for one code, for charts)
+// Statistics need every row, so nothing is truncated: rows come in primary-key order, a page at a
+// time, and clients follow next_cursor to the end. Item details come with the first page only.
+// Revenue codes repeat one identical price list under hundreds of items, so a single item is read.
+// `service` (additional_information) is what a revenue-code price is really for. 0001 tables only.
+export async function charges(db: D1Database, q: Params) {
+  const code = parseCode(q.get('code'))
+  const item = await first(
+    db,
+    `SELECT b.item_id, b.billing_code, b.billing_code_type, b.name, b.description,
+            (SELECT COUNT(*) FROM billing_items c WHERE c.billing_code = b.billing_code) AS item_count
+       FROM billing_items b WHERE b.billing_code = ? ORDER BY b.item_id LIMIT 1`,
+    [code],
+  )
+  if (!item) throw notFound()
+  const limit = parseLimit(q.get('limit'), CHARGES_PAGE)
+  const signature = JSON.stringify(['charges', code, item.item_id])
+  const cursor = decodeCursor(q.get('cursor'), signature, 4)
+  const ks = cursor
+    ? keysetWhere(
+        ['p.rate_idx', 'p.price_idx', 'r.provider_group_id', 't.tin_value'].map((expr) => ({ expr, dir: 'ASC' as const })),
+        cursor,
+      )
+    : null
+
+  const [rows, services] = await Promise.all([
+    all(
+      db,
+      `SELECT p.rate_idx, p.price_idx, r.provider_group_id, t.business_name, t.tin_value AS ein,
+              p.negotiated_rate, p.billing_class, p.service_code, p.billing_code_modifier,
+              p.additional_information AS service
+         FROM negotiated_prices p
+         CROSS JOIN rate_provider_groups r ON r.item_id = p.item_id AND r.rate_idx = p.rate_idx
+         CROSS JOIN provider_tins t ON t.provider_group_id = r.provider_group_id
+        WHERE p.item_id = ? AND p.negotiated_rate IS NOT NULL AND p.negotiated_type IS NOT 'percentage'
+          ${ks ? `AND (p.rate_idx, p.price_idx) >= (?, ?) AND ${ks.sql}` : ''}
+        ORDER BY p.rate_idx, p.price_idx, r.provider_group_id, t.tin_value
+        LIMIT ?`,
+      [item.item_id, ...(cursor ? cursor.slice(0, 2) : []), ...(ks?.params ?? []), limit + 1],
+    ),
+    cursor
+      ? Promise.resolve([])
+      : all(
+          db,
+          `SELECT s.service, (SELECT b.name FROM billing_items b WHERE b.billing_code = s.service LIMIT 1) AS name
+             FROM (SELECT DISTINCT additional_information AS service FROM negotiated_prices
+                    WHERE item_id = ? AND additional_information IS NOT NULL) s`,
+          [item.item_id],
+        ),
+  ])
+  const result = page(rows, limit, signature, (r) => [r.rate_idx, r.price_idx, r.provider_group_id, r.ein])
+  return {
+    ...(cursor ? {} : { item, services }),
+    ...result,
+    data: result.data.map((r) => ({
+      business_name: r.business_name,
+      ein: r.ein,
+      negotiated_rate: r.negotiated_rate,
+      billing_class: r.billing_class,
+      service: r.service,
+      service_code: parseJson(r.service_code) ?? [],
+      billing_code_modifier: parseJson(r.billing_code_modifier) ?? [],
+    })),
+  }
+}
+
+const BUSINESS_PAGE = 50 // billing codes per page, default and maximum; each is a bound parameter (D1 allows 100)
+
+/** Median of an ascending list. */
+const medianOf = (v: number[]) => (v[(v.length - 1) >> 1] + v[v.length >> 1]) / 2
+
+/** A business's rate: a plain number, or the median of a JSON array of several. */
+const ownRate = (v: unknown): number =>
+  typeof v === 'number' ? v : medianOf((parseJson(v) as number[]).sort((a, b) => a - b))
+
+// GET /api/business?name=&limit=&cursor=   (one business's rate per procedure against the median business)
+// A procedure is an exact variant (code, priced service, place, modifier, class), so telehealth is
+// never compared with office visits. Each business counts once, at the median of its own rates.
+// Paged by billing code: the codes on the page are chosen first and only their market is aggregated,
+// so a query's cost is bounded by `limit`, however large the business. Clients follow next_cursor.
+// Reads one item per code, as in charges(). Medians are computed here, not with SQL window
+// functions, which re-read every row several times against the D1 quota. 0001 tables only.
+export async function business(db: D1Database, q: Params) {
+  const name = q.get('name')?.trim() ?? ''
+  if (!name || name.length > 200) throw badRequest(ERROR_CODES.MISSING_NAME)
+  const limit = parseLimit(q.get('limit'), BUSINESS_PAGE)
+  if (limit > BUSINESS_PAGE) throw badRequest(ERROR_CODES.INVALID_LIMIT)
+  const signature = JSON.stringify(['business', name])
+  const cursor = decodeCursor(q.get('cursor'), signature, 1)
+
+  const identity = cursor
+    ? null
+    : await first(
+        db,
+        `SELECT MIN(business_name) AS name, COUNT(DISTINCT tin_value) AS ein_count
+           FROM provider_tins WHERE business_name = ? COLLATE NOCASE`,
+        [name],
+      )
+  if (identity && identity.ein_count === 0) throw notFound()
+
+  // Unary + keeps SQLite on the (item_id, ...) key: one item per code, not its repeated copies.
+  const items = await all(
+    db,
+    `SELECT c.item_id
+       FROM (SELECT MIN(item_id) AS item_id FROM billing_items GROUP BY billing_code HAVING MIN(item_id) > ?) c
+      WHERE EXISTS (SELECT 1 FROM rate_provider_groups r
+                     WHERE r.item_id = c.item_id
+                       AND +r.provider_group_id IN (SELECT provider_group_id FROM provider_tins
+                                                     WHERE business_name = ? COLLATE NOCASE))
+      ORDER BY c.item_id LIMIT ?`,
+    [cursor?.[0] ?? -1, name, limit + 1],
+  )
+  const { data: pageItems, next_cursor } = page(items, limit, signature, (r) => [r.item_id])
+  const head = { ...identity, limit, next_cursor }
+  if (pageItems.length === 0) return { ...head, data: [] }
+
+  // per_business.v is one rate, or a JSON array when a business has several for the same variant.
+  // CROSS JOIN fixes the join order, starting from the page's items.
+  const rows = await all(
+    db,
+    `WITH
+     per_business AS (
+       SELECT item_id, service, place, modifier, class, biz,
+              CASE WHEN COUNT(*) = 1 THEN MIN(rate) ELSE json_group_array(rate) END AS v
+         FROM (SELECT DISTINCT p.item_id, IFNULL(p.additional_information, '') AS service, IFNULL(p.service_code, '') AS place,
+                      IFNULL(p.billing_code_modifier, '') AS modifier, IFNULL(p.billing_class, '') AS class,
+                      LOWER(IFNULL(t.business_name, t.tin_value)) AS biz, p.negotiated_rate AS rate
+                 FROM negotiated_prices p
+                 CROSS JOIN rate_provider_groups r ON r.item_id = p.item_id AND r.rate_idx = p.rate_idx
+                 CROSS JOIN provider_tins t ON t.provider_group_id = r.provider_group_id
+                WHERE p.item_id IN (${pageItems.map(() => '?').join(',')})
+                  AND p.negotiated_rate IS NOT NULL AND p.negotiated_type IS NOT 'percentage')
+        GROUP BY item_id, service, place, modifier, class, biz),
+     market AS (
+       SELECT item_id, service, place, modifier, class, COUNT(*) AS businesses,
+              json_group_array(v) AS rates, MAX(CASE WHEN biz = LOWER(?) THEN v END) AS own
+         FROM per_business GROUP BY item_id, service, place, modifier, class
+       HAVING own IS NOT NULL)
+     SELECT m.service, m.place, m.modifier, m.class, m.businesses, m.rates, m.own,
+            b.billing_code AS code, b.billing_code_type AS type, b.name,
+            (SELECT s.name FROM billing_items s WHERE s.billing_code = m.service LIMIT 1) AS service_name
+       FROM market m JOIN billing_items b ON b.item_id = m.item_id
+      ORDER BY m.item_id, m.service, m.place, m.modifier, m.class`,
+    [...pageItems.map((r) => r.item_id), name],
+  )
+  return {
+    ...head,
+    data: rows.map((r) => {
+      const rates = (parseJson(r.rates) as unknown[]).map(ownRate).sort((a, b) => a - b)
+      return {
+        code: r.code,
+        type: r.type,
+        name: r.name,
+        service: r.service || null,
+        service_name: r.service_name,
+        place: parseJson(r.place) ?? [],
+        modifier: parseJson(r.modifier) ?? [],
+        billing_class: r.class,
+        rate: ownRate(r.own),
+        median: medianOf(rates),
+        low: rates[0],
+        high: rates[rates.length - 1],
+        businesses: r.businesses,
+      }
+    }),
+  }
+}
+
 // GET /api/summary?code=   (reads the precomputed code_summary; see scripts/build_code_summary.sql)
 export async function summary(db: D1Database, q: Params) {
   const code = parseCode(q.get('code'))

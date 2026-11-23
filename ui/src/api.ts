@@ -5,6 +5,7 @@ import {
   HTTP_STATUS_MESSAGES,
   NETWORK_ERROR_MESSAGE,
   TIMEOUT_MESSAGE,
+  TOO_MANY_ROWS_MESSAGE,
   UNEXPECTED_RESPONSE_MESSAGE,
   UNKNOWN_ERROR_MESSAGE,
 } from './constants/apiErrors'
@@ -65,6 +66,29 @@ export async function apiGet<T>(path: string, query: Query = {}, signal?: AbortS
     throw new ApiRequestError(message, response.status, code)
   }
   return body as T
+}
+
+const MAX_PAGES = 100 // stops a runaway loop; real lists take a handful
+
+/**
+ * Follow next_cursor to the end, one request at a time. Charts need every row, so this either
+ * returns all of them (with the first page's other fields) or throws; it never returns a subset.
+ */
+export async function apiGetAll<T extends { data: unknown[]; next_cursor: string | null }>(
+  path: string,
+  query: Query,
+  signal?: AbortSignal,
+): Promise<T> {
+  const first = await apiGet<T>(path, query, signal)
+  const data = [...first.data]
+  let cursor = first.next_cursor
+  for (let pages = 1; cursor; pages++) {
+    if (pages >= MAX_PAGES) throw new ApiRequestError(TOO_MANY_ROWS_MESSAGE, -1)
+    const next: T = await apiGet<T>(path, { ...query, cursor }, signal)
+    data.push(...next.data)
+    cursor = next.next_cursor
+  }
+  return { ...first, data, next_cursor: null }
 }
 
 /** Show a toast for any error thrown while calling the API. */

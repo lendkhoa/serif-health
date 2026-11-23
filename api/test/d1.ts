@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { DatabaseSync } from 'node:sqlite'
 
 /** Minimal in-memory D1 stand-in over node:sqlite (just prepare/bind/all). */
-export function createTestDb({ only0001 = false } = {}): D1Database {
+export function createTestDb({ only0001 = false, compare = false } = {}): D1Database {
   const sqlite = new DatabaseSync(':memory:')
   const read = (rel: string) => readFileSync(new URL(rel, import.meta.url), 'utf8')
   sqlite.exec(read('../migrations/0001_init.sql'))
@@ -41,6 +41,16 @@ export function createTestDb({ only0001 = false } = {}): D1Database {
     INSERT INTO rate_provider_groups VALUES (1,3,13);
   `)
   sqlite.exec(read('../../scripts/build_code_summary.sql'))
+  if (compare) {
+    sqlite.exec(`
+    -- three businesses on one procedure, plus a second class priced by one of them
+    INSERT INTO billing_items (item_id,billing_code,name) VALUES (6,'CMP1','Compare');
+    INSERT INTO negotiated_prices (item_id,rate_idx,price_idx,negotiated_rate,billing_class,service_code) VALUES
+      (6,0,0,10,'professional','["11"]'),(6,0,1,30,'professional','["11"]'),(6,1,0,40,'professional','["11"]'),
+      (6,2,0,60,'professional','["11"]'),(6,0,2,500,'institutional','["11"]');
+    INSERT INTO rate_provider_groups VALUES (6,0,10),(6,0,12),(6,1,11),(6,2,14);
+    `)
+  }
   if (only0001) {
     sqlite.exec(`DROP TABLE source_files; DROP TABLE code_summary; DROP INDEX idx_provider_tins_name_nc;
       ALTER TABLE billing_items DROP COLUMN source_file_id;`)

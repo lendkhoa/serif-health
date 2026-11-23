@@ -1,37 +1,39 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { apiGet, notifyApiError } from '../api.ts'
+import { getCached, setCached, useCacheVersion } from '../apiCache.ts'
 import type { Page, RateFilters, RateRow, RateSort } from './types.ts'
 
 const DEBOUNCE_MS = 150 // coalesces rapid changes (and StrictMode's double effect) into one request
-const MAX_CACHED_PAGES = 20
 
 export type RatesQuery = { filters: RateFilters; sort: RateSort; limit: number }
 
 /**
- * Cursor-paginated rates: /api/search for a billing code, /api/rates (everything) without one. Only the visible page is requested, nothing is prefetched or
- * retried automatically, and a superseded request is aborted. Recent pages are kept in a small
- * cache so going back costs the server nothing.
+ * Cursor-paginated rates: /api/search for a billing code, /api/rates (everything) without one.
+ * Only the visible page is requested, nothing is prefetched or retried automatically, and a
+ * superseded request is aborted. Recent pages come from the shared cache. Makes no requests while
+ * `enabled` is false, but keeps its filters, page and rows.
  */
-export function useRates(query: RatesQuery) {
+export function useRates(query: RatesQuery, enabled: boolean) {
   const { filters, sort, limit } = query
   const queryKey = JSON.stringify([filters, sort, limit])
 
   // cursors[i] opens page i. Reset during render when the query changes, so a cursor from the
   // previous query is never sent with the new one.
   const [paging, setPaging] = useState({ queryKey, cursors: [null] as (string | null)[], page: 0 })
-  const [result, setResult] = useState<{ key: string; data: Page<RateRow> | null; error: boolean } | null>(null)
+  const [result, setResult] = useState<{ key: string; version: number; data: Page<RateRow> | null; error: boolean } | null>(null)
   const [attempt, setAttempt] = useState(0)
-  const cache = useRef(new Map<string, Page<RateRow>>())
+  const version = useCacheVersion()
 
   if (paging.queryKey !== queryKey) setPaging({ queryKey, cursors: [null], page: 0 })
 
   const cursor = paging.cursors[paging.page]
-  const key = `${queryKey}|${cursor ?? ''}`
+  const key = `rates|${queryKey}|${cursor ?? ''}`
 
   useEffect(() => {
-    const cached = cache.current.get(key)
+    if (!enabled) return
+    const cached = getCached<Page<RateRow>>(key)
     if (cached) {
-      setResult({ key, data: cached, error: false })
+      setResult({ key, version, data: cached, error: false })
       return
     }
     const controller = new AbortController()
@@ -46,23 +48,22 @@ export function useRates(query: RatesQuery) {
           controller.signal,
         )
         if (controller.signal.aborted) return
-        cache.current.set(key, data)
-        if (cache.current.size > MAX_CACHED_PAGES) cache.current.delete(cache.current.keys().next().value!)
-        setResult({ key, data, error: false })
+        setCached(key, data, version)
+        setResult({ key, version, data, error: false })
       } catch (error) {
         if (controller.signal.aborted) return
         notifyApiError(error)
-        setResult({ key, data: null, error: true })
+        setResult({ key, version, data: null, error: true })
       }
     }, DEBOUNCE_MS)
     return () => {
       clearTimeout(timer)
       controller.abort()
     }
-  }, [key, queryKey, cursor, attempt])
+  }, [enabled, key, queryKey, cursor, version, attempt])
 
-  const current = result?.key === key ? result : null
-  const loading = !current
+  const current = result?.key === key && result.version === version ? result : null
+  const loading = enabled && !current
   const nextCursor = current?.data?.next_cursor ?? null
 
   const next = useCallback(() => {

@@ -8,6 +8,7 @@ export const API_ERROR_MESSAGES: Record<string, string> = {
   INVALID_LIMIT: 'Page size must be between 1 and 500.',
   INVALID_CURSOR: 'Your results page expired. Please run the search again.',
   INVALID_SORT: 'Unsupported sort order.',
+  MISSING_NAME: 'Enter a business name.',
   MISSING_FILTER: 'Enter an NPI or an EIN.',
   MISSING_QUERY: 'Type something to search for.',
   NOT_FOUND: 'Nothing was found for that request.',
@@ -27,6 +28,7 @@ export const HTTP_STATUS_MESSAGES: Record<number, string> = {
   503: 'The API is temporarily unavailable.',
 }
 
+export const TOO_MANY_ROWS_MESSAGE = 'There are too many rates to chart accurately.'
 export const TIMEOUT_MESSAGE = 'The API took too long to respond. Add a filter or try again.'
 export const NETWORK_ERROR_MESSAGE = 'Could not reach the API. Check your connection and try again.'
 export const UNEXPECTED_RESPONSE_MESSAGE = 'The API returned an unexpected response.'

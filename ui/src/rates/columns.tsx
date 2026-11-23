@@ -15,11 +15,11 @@ const Empty = () => (
 
 const text = (value: string | number | null) => (value === null || value === '' ? <Empty /> : value)
 
-function LongText({ value }: { value: string | null }) {
+function LongText({ value, dimmed }: { value: string | null; dimmed?: boolean }) {
   if (!value) return <Empty />
   return (
-    <Tooltip label={value} multiline maw={420} openDelay={300}>
-      <Text size="sm" truncate>
+    <Tooltip label={dimmed ? `${value} (revenue-code label, not what is priced)` : value} multiline maw={420} openDelay={300}>
+      <Text size="sm" truncate c={dimmed ? 'dimmed' : undefined}>
         {value}
       </Text>
     </Tooltip>
@@ -45,6 +45,9 @@ function Tags({ values, total, max = 3 }: { values: (string | number)[] | null; 
   )
 }
 
+/** Revenue codes repeat one price list under many names, so the name is not what is priced. */
+const isLabelOnly = (r: RateRow) => r.billing_code_type === 'RC'
+
 /** Every stored field of the source file, grouped the way the JSON nests them. */
 export const rateColumnGroups = (sortable: boolean): DataTableColumnGroup<RateRow>[] => [
   {
@@ -54,8 +57,9 @@ export const rateColumnGroups = (sortable: boolean): DataTableColumnGroup<RateRo
       { accessor: 'billing_code', title: 'Code', width: 90, render: (r) => <Text fw={600} size="sm">{r.billing_code}</Text> },
       { accessor: 'billing_code_type', title: 'Code type', width: 100, render: (r) => text(r.billing_code_type) },
       { accessor: 'billing_code_type_version', title: 'Type version', width: 115, render: (r) => text(r.billing_code_type_version) },
-      { accessor: 'name', title: 'Name', width: 220, render: (r) => <LongText value={r.name} /> },
-      { accessor: 'description', title: 'Description', width: 280, render: (r) => <LongText value={r.description} /> },
+      { accessor: 'additional_information', title: 'Priced procedure', width: 150, render: (r) => <LongText value={r.additional_information ?? (r.billing_code_type === 'RC' ? null : r.billing_code)} /> },
+      { accessor: 'name', title: 'Name', width: 220, render: (r) => <LongText value={r.name} dimmed={isLabelOnly(r)} /> },
+      { accessor: 'description', title: 'Description', width: 280, render: (r) => <LongText value={r.description} dimmed={isLabelOnly(r)} /> },
       { accessor: 'negotiation_arrangement', title: 'Arrangement', width: 120, render: (r) => text(r.negotiation_arrangement) },
     ],
   },
@@ -70,7 +74,6 @@ export const rateColumnGroups = (sortable: boolean): DataTableColumnGroup<RateRo
       { accessor: 'service_code', title: 'Service codes', width: 170, render: (r) => <Tags values={r.service_code} /> },
       { accessor: 'billing_code_modifier', title: 'Modifiers', width: 150, render: (r) => <Tags values={r.billing_code_modifier} /> },
       { accessor: 'expiration_date', title: 'Expires', width: 115, render: (r) => text(r.expiration_date) },
-      { accessor: 'additional_information', title: 'Additional info', width: 180, render: (r) => <LongText value={r.additional_information} /> },
     ],
   },
   {

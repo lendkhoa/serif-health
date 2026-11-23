@@ -9,11 +9,12 @@ import { useRates } from './useRates.ts'
 
 const PAGE_SIZES = ['25', '50', '100', '200']
 
-export default function RatesPage() {
+/** `active` is false while another lens is showing; the page then keeps its state but fetches nothing. */
+export default function RatesPage({ active }: { active: boolean }) {
   const [filters, setFilters] = useState(EMPTY_FILTERS)
   const [sort, setSort] = useState<RateSort>('rate_desc')
   const [limit, setLimit] = useState(50)
-  const rates = useRates({ filters, sort, limit })
+  const rates = useRates({ filters, sort, limit }, active)
   const { rows, loading, failed, page, hasNext } = rates
   const viewport = useRef<HTMLDivElement>(null)
 
@@ -41,7 +42,7 @@ export default function RatesPage() {
         <RateFilterBar applied={filters} onApply={setFilters} />
 
         <DataTable<RateRow>
-          height="max(360px, calc(100dvh - 310px))"
+          height="max(360px, calc(100dvh - 360px))"
           withTableBorder
           withColumnBorders
           striped

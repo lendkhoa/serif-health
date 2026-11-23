@@ -14,8 +14,11 @@ import {
 import { HandWavingIcon, MagnifyingGlass, Moon, Sun } from '@phosphor-icons/react'
 import { useEffect, useState } from 'react'
 import { apiGetWithToast } from './api.ts'
+import type { AppPage } from './App.tsx'
 
-export default function NavigationBar() {
+type NavigationBarProps = { page: AppPage; onNavigate: (page: AppPage) => void }
+
+export default function NavigationBar({ page, onNavigate }: NavigationBarProps) {
   const [apiOk, setApiOk] = useState<boolean | null>(null)
   const { setColorScheme } = useMantineColorScheme()
   const computedColorScheme = useComputedColorScheme('light')
@@ -45,13 +48,13 @@ export default function NavigationBar() {
           <Menubar.Menu>
             <Menubar.Target>More</Menubar.Target>
             <Menubar.Dropdown>
-              <Menu.Item>About the project</Menu.Item>
+              <Menu.Item onClick={() => onNavigate('about')} aria-current={page === 'about' ? 'page' : undefined}>About the project</Menu.Item>
             </Menubar.Dropdown>
           </Menubar.Menu>
 
           <Group gap="xs" wrap="nowrap">
             <Tooltip label="Search">
-              <ActionIcon variant="subtle" size="lg" aria-label="Search">
+              <ActionIcon variant="subtle" size="lg" aria-label="Search" onClick={() => onNavigate('search')}>
                 <MagnifyingGlass size={20} aria-hidden="true" />
               </ActionIcon>
             </Tooltip>
