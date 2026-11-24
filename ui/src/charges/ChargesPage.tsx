@@ -1,6 +1,6 @@
 import { BarChart } from '@mantine/charts'
 import { Button, Center, Container, Group, Loader, Pagination, Paper, SegmentedControl, Select, SimpleGrid, Stack, Text, TextInput, Title } from '@mantine/core'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import CodeInput from '../CodeInput.tsx'
 import { apiGetAll } from '../api.ts'
 import { LinkTick, Stat, TooltipBox } from '../chartParts.tsx'
@@ -18,6 +18,23 @@ const EXAMPLES = [
   { code: '490', label: 'Surgery center (490)' },
 ]
 const unique = (values: string[]) => [...new Set(values)].sort()
+const DRAFT_CODE_KEY = 'serif-health:charges-draft-code'
+
+function readDraftCode() {
+  try {
+    return localStorage.getItem(DRAFT_CODE_KEY) ?? ''
+  } catch {
+    return ''
+  }
+}
+
+function saveDraftCode(value: string) {
+  try {
+    localStorage.setItem(DRAFT_CODE_KEY, value)
+  } catch {
+    // Storage can be unavailable in private browsing or restricted environments.
+  }
+}
 
 type Sort = 'low' | 'high'
 
@@ -231,14 +248,15 @@ function Charges({ response, initialService }: { response: ChargesResponse; init
 }
 
 export default function ChargesPage({ code, service }: { code: string; service: string | null }) {
-  const [draft, setDraft] = useState(code)
+  const [draft, setDraft] = useState(() => code || readDraftCode())
   const [error, setError] = useState<string>()
   const { data, loading, retry } = useApi('charges', code, loadCharges)
-  const [seenCode, setSeenCode] = useState(code)
-  if (seenCode !== code) {
-    setSeenCode(code)
-    setDraft(code)
-  }
+
+  useEffect(() => {
+    const nextDraft = code || readDraftCode()
+    setDraft(nextDraft)
+    if (code) saveDraftCode(code)
+  }, [code])
 
   function open(next: string) {
     const clean = next.trim().toUpperCase()
@@ -258,7 +276,15 @@ export default function ChargesPage({ code, service }: { code: string; service: 
           }}
         >
           <Group align="flex-start" gap="sm">
-            <CodeInput value={draft} onChange={setDraft} onPick={open} error={error} />
+            <CodeInput
+              value={draft}
+              onChange={(value) => {
+                setDraft(value)
+                saveDraftCode(value)
+              }}
+              onPick={open}
+              error={error}
+            />
             <Button type="submit" mt={25}>Compare</Button>
           </Group>
         </form>

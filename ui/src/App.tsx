@@ -1,6 +1,6 @@
 import { Button, Center, Container, Loader, MantineProvider, Tabs, createTheme } from '@mantine/core'
 import { Notifications } from '@mantine/notifications'
-import { Suspense, lazy, useState } from 'react'
+import { Suspense, lazy, useEffect, useState } from 'react'
 import NavigationBar from './NavigationBar.tsx'
 import { clearApiCache } from './apiCache.ts'
 import { LENSES, lensHref, useLens, type LensId } from './lenses.ts'
@@ -19,12 +19,25 @@ const theme = createTheme({
 
 export default function App() {
   const { lens, params } = useLens()
-  const [page, setPage] = useState<AppPage>('search')
+  const [page, setPage] = useState<AppPage>(() => window.location.pathname.endsWith('/about') ? 'about' : 'search')
+
+  useEffect(() => {
+    const onPopState = () => setPage(window.location.pathname.endsWith('/about') ? 'about' : 'search')
+    window.addEventListener('popstate', onPopState)
+    return () => window.removeEventListener('popstate', onPopState)
+  }, [])
+
+  const navigate = (next: AppPage) => {
+    const path = next === 'about' ? '/app/about' : '/app/rates'
+    window.history.pushState({}, '', path)
+    setPage(next)
+  }
+
   return (
     <MantineProvider theme={theme} defaultColorScheme="light">
       <Notifications position="top-right" limit={5} />
-      <NavigationBar page={page} onNavigate={setPage} />
-      {page === 'about' ? <AboutPage onBackToSearch={() => setPage('search')} /> : <>
+      <NavigationBar page={page} onNavigate={navigate} />
+      {page === 'about' ? <AboutPage onBackToSearch={() => navigate('search')} /> : <>
       <Container fluid px={{ base: 'sm', sm: 'md' }} pt="xs">
         <Tabs value={lens} onChange={(id) => id && (window.location.hash = lensHref(id as LensId))}>
           <Tabs.List>

@@ -1,5 +1,6 @@
 import {
   ActionIcon,
+  Anchor,
   Badge,
   Container,
   Group,
@@ -36,9 +37,16 @@ export default function NavigationBar({ page, onNavigate }: NavigationBarProps) 
         <Menubar aria-label="Main navigation" style={{ minHeight: '3.5rem' }}>
           <Group gap="xs" wrap="nowrap" style={{ flex: 1, minWidth: 0 }}>
             <HandWavingIcon size={24} aria-hidden="true" style={{ flexShrink: 0 }} />
-            <Text fw={700} size="clamp(0.85rem, 3.5vw, 1.1rem)" truncate>
+            <Anchor
+              href="https://serif-health-assignment.khoale.workers.dev/app#/rates"
+              c="inherit"
+              underline="never"
+              fw={700}
+              size="clamp(0.85rem, 3.5vw, 1.1rem)"
+              truncate
+            >
               Serif Health Price Transparency Project
-            </Text>
+            </Anchor>
           </Group>
 
           <Badge color={apiOk === null ? 'gray' : apiOk ? 'green' : 'red'} variant="light">
