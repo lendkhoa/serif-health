@@ -16,7 +16,7 @@ import {
 type Params = URLSearchParams
 type Row = Record<string, any>
 
-async function all(db: D1Database, sql: string, params: unknown[] = []): Promise<Row[]> {
+export async function all(db: D1Database, sql: string, params: unknown[] = []): Promise<Row[]> {
   try {
     const { results } = await db
       .prepare(sql)

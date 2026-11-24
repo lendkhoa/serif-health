@@ -49,6 +49,18 @@ export function createTestDb({ only0001 = false, compare = false } = {}): D1Data
       (6,0,0,10,'professional','["11"]'),(6,0,1,30,'professional','["11"]'),(6,1,0,40,'professional','["11"]'),
       (6,2,0,60,'professional','["11"]'),(6,0,2,500,'institutional','["11"]');
     INSERT INTO rate_provider_groups VALUES (6,0,10),(6,0,12),(6,1,11),(6,2,14);
+    -- name search: real wording from the rate file, a revenue code and an unpriced code
+    INSERT INTO billing_items (item_id,billing_code,billing_code_type,name,description) VALUES
+      (7,'73721','CPT','MRI JNT OF LWR EXTRE W/O DYE','MAGNETIC RESONANCE IMAGING, ANY JOINT OF LOWER EXTREMITY; WITHOUT CONTRAST MATERIAL'),
+      (8,'73722','CPT','MRI JOINT OF LWR EXTR W/DYE','MAGNETIC RESONANCE IMAGING, ANY JOINT OF LOWER EXTREMITY; WITH CONTRAST MATERIAL(S)'),
+      (9,'73718','CPT','MRI LOWER EXTREMITY W/O DYE','MAGNETIC RESONANCE IMAGING, LOWER EXTREMITY OTHER THAN JOINT; WITHOUT CONTRAST MATERIAL'),
+      (10,'27447','CPT','TOTAL KNEE ARTHROPLASTY','ARTHROPLASTY, KNEE, CONDYLE AND PLATEAU'),
+      (11,'610','RC','MRI JNT OF LWR EXTRE W/O DYE','MAGNETIC RESONANCE IMAGING, ANY JOINT OF LOWER EXTREMITY'),
+      (12,'73723','CPT','MRI JOINT LWR EXTR W/O&W/DYE','MAGNETIC RESONANCE IMAGING, ANY JOINT OF LOWER EXTREMITY');
+    INSERT INTO negotiated_prices (item_id,rate_idx,price_idx,negotiated_rate) VALUES
+      (7,0,0,300),(8,0,0,400),(9,0,0,350),(10,0,0,9000),(11,0,0,300),(12,0,0,NULL);
+    INSERT INTO provider_tins VALUES (16,'ein','777777777','Eta Imaging');
+    INSERT INTO rate_provider_groups VALUES (7,0,16),(8,0,16),(9,0,16),(10,0,16),(11,0,16);
     `)
   }
   if (only0001) {

@@ -1,14 +1,18 @@
 import { ApiError, ERROR_CODES } from '../errors'
 import { charges } from '../routes'
 import { estimate, startingBalances, type Balances } from './estimate'
-import { rankBusinesses, type Charge, type RankedBusiness, type Ranking } from './rank'
+import { loadCodes, matchCodes, type CodeMatch } from './codes'
+import { medianOf, rankBusinesses, type Charge, type RankedBusiness, type Ranking } from './rank'
 import type { PlanInput, Procedure } from './schema'
 
 export type Option = RankedBusiness & { member_pays: number; plan_pays: number }
 
+/** Spread of the business rates (each a median) across every business in the ranked variant, not just `options`. */
+export type RateSpread = { median: number; low: number; high: number }
+
 export type ProcedureResult = { procedure: Procedure } & (
-  | { status: 'needs_code' } // no usable code; the user has to pick one
-  | { status: 'not_found'; code: string } // not in the loaded rate file
+  | { status: 'needs_code'; suggestions: CodeMatch[] } // no usable code; the user has to pick one
+  | { status: 'not_found'; code: string; suggestions: CodeMatch[] } // not in the loaded rate file
   | { status: 'too_many_rates'; code: string } // ranking a subset could miss the cheapest, so none is ranked
   | { status: 'no_match'; code: string; name: string | null } // priced, but not for this place or modifiers
   | ({
@@ -16,6 +20,7 @@ export type ProcedureResult = { procedure: Procedure } & (
       code: string
       name: string | null
       total_businesses: number
+      rates: RateSpread
       options: Option[]
     } & Omit<Ranking, 'businesses'>)
 )
@@ -61,15 +66,21 @@ export async function analyzePlan(db: D1Database, { plan, procedures }: PlanInpu
   let left = starting
   let total = 0
   const results: ProcedureResult[] = []
+  let catalog: CodeMatch[] | undefined // loaded at most once, and only if a procedure lacks a usable code
+  const suggest = async (text: string) => matchCodes((catalog ??= await loadCodes(db)), text)
 
   // One at a time: each procedure is priced against what the ones before it used up.
   for (const procedure of procedures) {
     const { code } = procedure
     if (code === null) {
-      results.push({ procedure, status: 'needs_code' })
+      results.push({ procedure, status: 'needs_code', suggestions: await suggest(procedure.description) })
       continue
     }
     const loaded = await loadCharges(db, code)
+    if (loaded.status === 'not_found') {
+      results.push({ procedure, status: 'not_found', code, suggestions: await suggest(procedure.description) })
+      continue
+    }
     if (loaded.status !== 'ok') {
       results.push({ procedure, status: loaded.status, code })
       continue
@@ -89,7 +100,20 @@ export async function analyzePlan(db: D1Database, { plan, procedures }: PlanInpu
     const cheapest = estimate(businesses[0].rate, procedure.copay, plan.coinsurance, before)
     left = cheapest.after
     total += cheapest.member_pays
-    results.push({ procedure, status: 'ranked', code, name: loaded.name, total_businesses: businesses.length, options, ...rest })
+    results.push({
+      procedure,
+      status: 'ranked',
+      code,
+      name: loaded.name,
+      total_businesses: businesses.length,
+      rates: {
+        median: medianOf(businesses.map((b) => b.rate)),
+        low: businesses[0].rate,
+        high: businesses[businesses.length - 1].rate,
+      },
+      options,
+      ...rest,
+    })
   }
   return { starting, remaining: left, total_member_pays: Math.round(total * 100) / 100, results }
 }

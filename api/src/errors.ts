@@ -11,9 +11,15 @@ export const ERROR_CODES = {
   MISSING_NAME: 'MISSING_NAME',
   MISSING_FILTER: 'MISSING_FILTER',
   MISSING_QUERY: 'MISSING_QUERY',
+  QUERY_TOO_LONG: 'QUERY_TOO_LONG',
+  INVALID_JSON: 'INVALID_JSON',
+  INVALID_PLAN: 'INVALID_PLAN',
+  BODY_TOO_LARGE: 'BODY_TOO_LARGE',
   NOT_FOUND: 'NOT_FOUND',
   ROUTE_NOT_FOUND: 'ROUTE_NOT_FOUND',
   METHOD_NOT_ALLOWED: 'METHOD_NOT_ALLOWED',
+  AI_OFFLINE: 'AI_OFFLINE',
+  AI_BAD_REPLY: 'AI_BAD_REPLY',
   DB_ERROR: 'DB_ERROR',
   INTERNAL: 'INTERNAL',
 } as const
@@ -32,9 +38,15 @@ export const ERROR_MESSAGES: Record<ErrorCode, string> = {
   MISSING_NAME: 'Query parameter "name" (business name, up to 200 characters) is required.',
   MISSING_FILTER: 'Provide at least one of "npi" or "ein".',
   MISSING_QUERY: 'Query parameter "q" is required.',
+  QUERY_TOO_LONG: 'Query parameter "q" must be at most 200 characters.',
+  INVALID_JSON: 'The request body must be valid JSON.',
+  INVALID_PLAN: 'The plan is not valid. See "details" for each problem.',
+  BODY_TOO_LARGE: 'The request body is too large.',
   NOT_FOUND: 'No data was found for the requested resource.',
   ROUTE_NOT_FOUND: 'Unknown API route.',
-  METHOD_NOT_ALLOWED: 'Only GET requests are supported.',
+  METHOD_NOT_ALLOWED: 'This route does not support that request method.',
+  AI_OFFLINE: 'The AI is offline. Prices and charts still work without it.',
+  AI_BAD_REPLY: 'The AI gave an unusable answer. Please try again.',
   DB_ERROR: 'The database could not be queried. Please try again.',
   INTERNAL: 'Unexpected server error.',
 }
@@ -44,6 +56,7 @@ export class ApiError extends Error {
     readonly code: ErrorCode,
     readonly status: number,
     message: string = ERROR_MESSAGES[code],
+    readonly details?: string[],
   ) {
     super(message)
   }
@@ -53,5 +66,6 @@ export const badRequest = (code: ErrorCode) => new ApiError(code, 400)
 export const notFound = (code: ErrorCode = ERROR_CODES.NOT_FOUND) => new ApiError(code, 404)
 
 export function errorResponse(err: ApiError): Response {
-  return Response.json({ error: { code: err.code, message: err.message } }, { status: err.status })
+  const { code, message, details, status } = err
+  return Response.json({ error: { code, message, ...(details && { details }) } }, { status })
 }

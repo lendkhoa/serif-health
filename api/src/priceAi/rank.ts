@@ -27,7 +27,7 @@ export type Ranking = {
 /** These price only part of a procedure (26 professional, TC technical), so ranking them would understate it. */
 const PARTIAL_MODIFIERS = ['26', 'TC']
 
-const medianOf = (sorted: number[]) => (sorted[(sorted.length - 1) >> 1] + sorted[sorted.length >> 1]) / 2
+export const medianOf = (sorted: number[]) => (sorted[(sorted.length - 1) >> 1] + sorted[sorted.length >> 1]) / 2
 
 const byName = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0)
 

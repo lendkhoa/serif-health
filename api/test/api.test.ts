@@ -21,6 +21,10 @@ describe('health & routing', () => {
     expect(r.status).toBe(404)
     expect(r.body.error.code).toBe('ROUTE_NOT_FOUND')
   })
+  it('POST to an unknown route is 404', async () => {
+    const res = await handle(new Request('http://x/api/nope', { method: 'POST' }), env)
+    expect(res.status).toBe(404)
+  })
   it('non-GET is 405', async () => {
     const res = await handle(new Request('http://x/api/health', { method: 'POST' }), env)
     expect(res.status).toBe(405)

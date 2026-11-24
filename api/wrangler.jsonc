@@ -11,6 +11,17 @@
 		"run_worker_first": ["/api/*"]
 	},
 	"observability": { "enabled": true },
+	"vars": { "OLLAMA_MODEL": "gemma3:4b" },
+	// Ollama on a private machine, through a Cloudflare Tunnel.
+	"vpc_services": [
+		{
+			"binding": "VPC_SERVICE",
+			"service_id": "01a20df6-061c-7f80-9e92-b4847ab956d9",
+			"remote": true
+		}
+	],
+	// Workers AI: used when Ollama does not answer.
+	"ai": { "binding": "AI" },
 	"d1_databases": [
 		{
 			"binding": "DB",

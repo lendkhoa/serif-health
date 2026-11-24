@@ -150,11 +150,14 @@ Done in 243s, 73 batches.
 | `GET /api/providers?npi=&tin=&limit=&cursor=` | Provider identity lookup: NPIs and the TINs they belong to. Also used to narrow the main search. |
 | `GET /api/org/:tin` | Organisation view: codes the TIN is priced on, with its rate vs. the market median per code. |
 | `GET /api/provider/:npi` | Provider view: the TINs for an NPI and its rates per code. |
+| `POST /api/price-ai/analyze` | Prices a plan's procedures (body: see `samples/price-ai/`, 16 KB max, 1-5 procedures). Each result has the 10 cheapest businesses with what the member and plan pay, plus `rates` (median, low, high) across every business in the ranked variant. A procedure without a usable code gets `suggestions` to pick from. No LLM. An invalid plan returns `INVALID_PLAN` with one `details` entry per problem. |
+| `GET /api/price-ai/codes?q=` | Finds codes by name, e.g. `MRI knee`. Returns up to 10 priced codes, best match first. Revenue codes are left out because each covers many services. |
+| `GET /api/price-ai/status` | Calls Ollama through the tunnel and reports `up`, `model_missing`, `bad_response`, `timeout`, `unreachable` or `not_configured`. Always 200; runs no model. |
 
 **Status:** all endpoints above are implemented (`api/src/routes.ts`). Notes:
 - `ein` is the public name; `tin` is accepted as an alias.
 - `/api/summary` reads the precomputed `code_summary` table. Rebuild it after every ingest with `make build-summaries` (`scripts/build_code_summary.sql`); until then it returns 404. Counts only include prices with a non-null rate and the orgs/NPIs attached to them.
-- `/api/suggest` is prefix-only (code prefix, organisation name/EIN prefix, exact NPI), so each lookup is an indexed range scan. Free-text/FTS5 search is future work.
+- `/api/suggest` is prefix-only (code prefix, organisation name/EIN prefix, exact NPI), so each lookup is an indexed range scan. Name search is `/api/price-ai/codes`, which scores the ~1,100 priced non-revenue codes in the Worker; FTS5 is future work.
 - Search cursors embed a signature of the query (code, NPI, EIN, setting, class, sort); a cursor replayed against a different query is rejected with `INVALID_CURSOR`.
 - Search rows include `service_code`, `billing_code_modifier`, the first 25 `npis` (plus `npi_count`) and the source file (`source_file`, `source_file_url`, `source_last_updated_on`). Ingest registers a single source file per database; pass `SOURCE_URL=` / `LAST_UPDATED_ON=` to `make migrate-file-to-d1` to record them.
 - Errors share one shape, `{ "error": { "code", "message" } }`, with codes in `api/src/errors.ts`; database failures return `DB_ERROR` (500).

@@ -22,7 +22,7 @@ export type PlanInput = { plan: Plan; procedures: Procedure[] }
 export type ParseResult = { ok: true; value: PlanInput } | { ok: false; errors: string[] }
 
 export const MAX_PROCEDURES = 5 // each one costs several D1 queries
-const MAX_TEXT = 200
+export const MAX_TEXT = 200
 const MAX_MODIFIERS = 5
 
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
