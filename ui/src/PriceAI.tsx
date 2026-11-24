@@ -1,12 +1,15 @@
 import {
+  Button,
   Container,
+  Group,
   useComputedColorScheme,
   useMantineTheme,
 } from "@mantine/core";
 import { ThemeProvider, createTheme } from "@mui/material/styles";
 import { ChatBox } from "@mui/x-chat";
-import { useMemo } from "react";
+import { useMemo, useRef, useState } from "react";
 import examplePrompt from "../../samples/price-ai/employer-prompt.txt?raw";
+import { clearChat, readDraft, readMessages, saveDraft, saveMessages } from "./chatStorage";
 import { priceAiAdapter } from "./priceAiAdapter";
 
 const CONVERSATION_ID = "price-ai";
@@ -38,6 +41,24 @@ export default function PriceAI() {
   const mantine = useMantineTheme();
   const isDark = useComputedColorScheme("light") === "dark";
 
+  // Clearing remounts the chat. A reply still running for the old one must not save over the new one.
+  const [session, setSession] = useState(() => ({
+    id: 0,
+    messages: readMessages() ?? initialMessages,
+    draft: readDraft(),
+  }));
+  const currentId = useRef(0);
+  const clear = () => {
+    clearChat();
+    currentId.current += 1;
+    setSession({ id: currentId.current, messages: initialMessages, draft: "" });
+  };
+  const ifCurrent =
+    <T,>(save: (value: T) => void) =>
+    (value: T) => {
+      if (session.id === currentId.current) save(value);
+    };
+
   // Mirror Mantine's color scheme, palette and font so the chat follows the app's light/dark toggle.
   const muiTheme = useMemo(
     () =>
@@ -65,16 +86,25 @@ export default function PriceAI() {
   return (
     <ThemeProvider theme={muiTheme}>
       <Container size="lg" px={{ base: "sm", sm: "md" }} py="xl">
+        <Group justify="flex-end" mb="xs">
+          <Button variant="subtle" size="compact-sm" onClick={clear}>
+            Clear chat
+          </Button>
+        </Group>
         <ChatBox
+          key={session.id}
           adapter={priceAiAdapter}
           suggestions={suggestions}
           slotProps={slotProps}
           features={features}
           initialConversations={initialConversations}
           initialActiveConversationId={CONVERSATION_ID}
-          initialMessages={initialMessages}
+          initialMessages={session.messages}
+          initialComposerValue={session.draft}
+          onMessagesChange={ifCurrent(saveMessages)}
+          onComposerValueChange={ifCurrent(saveDraft)}
           sx={{
-            height: "max(560px, calc(100vh - 180px))",
+            height: "max(560px, calc(100vh - 216px))",
             border: "1px solid",
             borderColor: "divider",
             borderRadius: 1,

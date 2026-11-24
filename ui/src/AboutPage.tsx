@@ -1,5 +1,6 @@
 import {
   Anchor,
+  Badge,
   Box,
   Button,
   Card,
@@ -17,9 +18,11 @@ import {
 import {
   ArrowRight,
   CheckCircle,
+  Cloud,
   Database,
   FileArrowDown,
   GitBranch,
+  Key,
   MagnifyingGlass,
   WarningCircle,
 } from '@phosphor-icons/react'
@@ -36,7 +39,35 @@ const requirements = [
   ['Rate-file ingestion', 'Flattened nested billing items, negotiated prices, provider groups, TINs, and NPIs into indexed D1 tables that are practical to query.'],
   ['Search API', 'Implemented billing-code search with optional NPI and EIN filters, keyset pagination, sorting, validation, and a consistent error shape.'],
   ['Searchable UI', 'Built a responsive Mantine interface with code search, provider filters, formatted results, expandable details, pagination, and loading states.'],
+  ['Price AI', 'Computes provider recommendations and savings from the loaded rates. A model only writes the summary, and any number not in the results is rejected.'],
   ['Resilient interactions', 'Fetch, validation, empty-result, and database failures are surfaced as useful UI states instead of crashing the application.'],
+] as const
+
+const aiOptions = [
+  {
+    icon: Cloud,
+    title: 'Self-hosted: Cloudflare VPC + Tunnel',
+    status: 'Integrated, with Workers AI fallback',
+    benefit: 'Prompts go to a model we control, and no model port is public.',
+    steps: [
+      'Run Ollama (gemma3:4b) on a private host.',
+      'Connect it with cloudflared; the tunnel is outbound only.',
+      'Register host and port as a VPC Service and bind it to the Worker.',
+      'Monitor /api/price-ai/status and warm the model before use.',
+    ],
+  },
+  {
+    icon: Key,
+    title: 'Managed: frontier model API key',
+    status: 'Planned',
+    benefit: 'Stronger reasoning with no hardware to run.',
+    steps: [
+      'Add a provider adapter (e.g. Claude) behind the existing Provider interface.',
+      'Store the key with wrangler secret; it never reaches the browser.',
+      'Add rate limits, a spend cap and a data-retention review.',
+      'Choose provider order by configuration and keep the number check.',
+    ],
+  },
 ] as const
 
 export default function AboutPage({ onBackToSearch }: AboutPageProps) {
@@ -94,6 +125,31 @@ export default function AboutPage({ onBackToSearch }: AboutPageProps) {
               </Card>
             ))}
           </Stack>
+        </Stack>
+
+        <Stack gap="lg">
+          <Stack gap="xs">
+            <Text tt="uppercase" fw={700} size="xs" c="blue">AI infrastructure</Text>
+            <Title order={2}>One interface, any model host</Title>
+            <Text c="dimmed" maw={720}>
+              Every model sits behind one small Provider interface, so hosts can be swapped or chained without touching pricing, prompts or the UI. Prices and rankings never depend on a model, so the app still works when all of them are down.
+            </Text>
+          </Stack>
+          <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md">
+            {aiOptions.map(({ icon: Icon, title, status, benefit, steps }) => (
+              <Card key={title} withBorder padding="lg" radius="md">
+                <Group justify="space-between">
+                  <ThemeIcon size="lg" variant="light"><Icon size={20} /></ThemeIcon>
+                  <Badge variant="light" color={status === 'Planned' ? 'gray' : 'green'}>{status}</Badge>
+                </Group>
+                <Text fw={700} mt="md">{title}</Text>
+                <Text size="sm" c="dimmed" mt="xs">{benefit}</Text>
+                <List type="ordered" size="sm" mt="md" spacing="xs">
+                  {steps.map((step) => <List.Item key={step}>{step}</List.Item>)}
+                </List>
+              </Card>
+            ))}
+          </SimpleGrid>
         </Stack>
 
         <SimpleGrid cols={{ base: 1, md: 2 }} spacing="xl">

@@ -45,8 +45,9 @@ export default function App() {
     <MantineProvider theme={theme} defaultColorScheme="light">
       <Notifications position="top-right" limit={5} />
       <NavigationBar page={page} onNavigate={navigate} />
-      {page === 'about' ? <AboutPage onBackToSearch={() => navigate('search')} /> : (
-        <Tabs variant="pills" value={page} onChange={(next) => next && navigate(next as AppPage)} keepMounted={false} pt="xs">
+      {page === 'about' && <AboutPage onBackToSearch={() => navigate('search')} />}
+      <div hidden={page === 'about'}>
+        <Tabs variant="pills" value={page} onChange={(next) => next && navigate(next as AppPage)} keepMounted={false} keepMountedMode="display-none" pt="xs">
           <Tabs.List justify="center">
             <Tabs.Tab value="price-ai">Price AI</Tabs.Tab>
             <Tabs.Tab value="search">Explore data</Tabs.Tab>
@@ -54,11 +55,12 @@ export default function App() {
           <Tabs.Panel value="search">
             <ExploreData />
           </Tabs.Panel>
-          <Tabs.Panel value="price-ai">
+          {/* Stays mounted, so an answer keeps arriving while another page is open. */}
+          <Tabs.Panel value="price-ai" keepMounted>
             <PriceAI />
           </Tabs.Panel>
         </Tabs>
-      )}
+      </div>
     </MantineProvider>
   )
 }
