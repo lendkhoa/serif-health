@@ -25,6 +25,8 @@ const ROUTES: [Method, RegExp, Handler][] = [
   ['GET', /^\/api\/price-ai\/codes$/, (e, _p, q) => priceAi.codes(e.DB, q)],
   ['GET', /^\/api\/price-ai\/status$/, (e) => status(e)],
   ['POST', /^\/api\/price-ai\/analyze$/, (e, _p, _q, request) => priceAi.analyze(e.DB, request)],
+  ['POST', /^\/api\/price-ai\/recommend$/, (e, _p, _q, request) => priceAi.recommend(e.DB, request)],
+  ['POST', /^\/api\/price-ai\/explain$/, (e, _p, _q, request) => priceAi.explain(e, request)],
 ]
 
 export async function handle(request: Request, env: Env): Promise<Response> {

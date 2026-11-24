@@ -25,10 +25,10 @@ export const MAX_PROCEDURES = 5 // each one costs several D1 queries
 export const MAX_TEXT = 200
 const MAX_MODIFIERS = 5
 
-const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
+export const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
 const isMoney = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v) && v >= 0
 
-export function parsePlanInput(raw: unknown): ParseResult {
+export function parsePlanInput(raw: unknown, maxProcedures = MAX_PROCEDURES): ParseResult {
   const errors: string[] = []
   const fail = (path: string, problem: string) => void errors.push(`${path} ${problem}`)
 
@@ -82,7 +82,7 @@ export function parsePlanInput(raw: unknown): ParseResult {
   const plan = isObject(raw.plan) ? raw.plan : {}
   if (!isObject(raw.plan)) fail('plan', 'must be an object')
   const list = Array.isArray(raw.procedures) ? raw.procedures : []
-  if (list.length < 1 || list.length > MAX_PROCEDURES) fail('procedures', `must be a list of 1-${MAX_PROCEDURES}`)
+  if (list.length < 1 || list.length > maxProcedures) fail('procedures', `must be a list of 1-${maxProcedures}`)
 
   const coinsurance = money(plan.coinsurance, 'plan.coinsurance')
   if (coinsurance > 1) fail('plan.coinsurance', 'must be a fraction from 0 to 1, e.g. 0.2')
@@ -95,7 +95,7 @@ export function parsePlanInput(raw: unknown): ParseResult {
       out_of_pocket_max: balance(plan.out_of_pocket_max, 'plan.out_of_pocket_max'),
       coinsurance,
     },
-    procedures: list.slice(0, MAX_PROCEDURES).map((p, i) => procedure(p, `procedures[${i}]`)),
+    procedures: list.slice(0, maxProcedures).map((p, i) => procedure(p, `procedures[${i}]`)),
   }
   return errors.length ? { ok: false, errors } : { ok: true, value }
 }

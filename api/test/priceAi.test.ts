@@ -24,7 +24,7 @@ const errorsOf = (raw: unknown) => {
 
 describe('parsePlanInput', () => {
   const dir = new URL('../../samples/price-ai/', import.meta.url)
-  it.each(readdirSync(dir))('accepts sample %s', (file) => {
+  it.each(readdirSync(dir).filter((f) => f.endsWith(".json")))('accepts sample %s', (file) => {
     expect(errorsOf(JSON.parse(readFileSync(new URL(file, dir), 'utf8')))).toEqual([])
   })
   it.each([null, [], 'x', {}])('rejects %j', (raw) => {

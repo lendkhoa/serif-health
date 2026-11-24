@@ -151,6 +151,8 @@ Done in 243s, 73 batches.
 | `GET /api/org/:tin` | Organisation view: codes the TIN is priced on, with its rate vs. the market median per code. |
 | `GET /api/provider/:npi` | Provider view: the TINs for an NPI and its rates per code. |
 | `POST /api/price-ai/analyze` | Prices a plan's procedures (body: see `samples/price-ai/`, 16 KB max, 1-5 procedures). Each result has the 10 cheapest businesses with what the member and plan pay, plus `rates` (median, low, high) across every business in the ranked variant. A procedure without a usable code gets `suggestions` to pick from. No LLM. An invalid plan returns `INVALID_PLAN` with one `details` entry per problem. |
+| `POST /api/price-ai/recommend` | Recommends providers for an employer. Body: `{ "message" }`, a question followed by the plan as JSON (see `samples/price-ai/employer-prompt.txt`, 1-8 procedures). Procedures with too few businesses are excluded, then the fewest providers within the tie tolerance of the lowest annual spend are chosen. Returns the shortlist, spend and savings against the median, the employer/employee split and each procedure's outcome. No LLM. |
+| `POST /api/price-ai/explain` | Same body. Recomputes the recommendation and has the LLM summarize it. A summary containing a number that is not in the results is replaced by a fixed template, as it is when the AI is offline (`source` says which). |
 | `GET /api/price-ai/codes?q=` | Finds codes by name, e.g. `MRI knee`. Returns up to 10 priced codes, best match first. Revenue codes are left out because each covers many services. |
 | `GET /api/price-ai/status` | Calls Ollama through the tunnel and reports `up`, `model_missing`, `bad_response`, `timeout`, `unreachable` or `not_configured`. Always 200; runs no model. |
 

@@ -1,0 +1,29 @@
+I manage health benefits for a 5,000-employee company in New York. Using the attached plan design and expected annual use, recommend which in-network providers we should steer employees to. Coverage comes first: exclude options that don't meet our minimums. Among the rest, minimize total annual spend, and prefer fewer providers when costs are within 5%. Show the expected savings against the market median, how they split between employer and employees, and where the data is too thin to decide.
+
+Context (volumes and plan values are illustrative)
+{
+  "audience": "employer",
+  "plan": {
+    "name": "Enterprise Silver PPO (synthetic)", "insurer": "Fidelis Care",
+    "deductible": { "total": 1500, "met": 0 },
+    "out_of_pocket_max": { "total": 5000, "met": 0 },
+    "coinsurance": 0.2
+  },
+  "population": { "employees": 5000, "covered_members": 11000 },
+  "constraints": {
+    "min_businesses_per_procedure": 5,
+    "min_basket_coverage": 0.8,
+    "max_preferred_providers": 10,
+    "tie_tolerance": 0.05
+  },
+  "procedures": [
+    { "code": "99213", "description": "Office visit", "place": "11", "modifiers": ["25"], "copay": 30, "annual_volume": 14000 },
+    { "code": "99396", "description": "Preventive visit, age 40-64", "place": "11", "modifiers": ["25"], "copay": 0, "annual_volume": 3000 },
+    { "code": "90837", "description": "60 min psychotherapy, telehealth", "place": "02", "modifiers": ["95"], "copay": 30, "annual_volume": 9000 },
+    { "code": "97110", "description": "Physical therapy exercises, per 15 min", "place": "11", "modifiers": ["GP"], "annual_volume": 12000 },
+    { "code": "80053", "description": "Metabolic panel", "place": "11", "annual_volume": 8000 },
+    { "code": "93000", "description": "Electrocardiogram", "place": "11", "annual_volume": 1500 },
+    { "code": "45378", "description": "Diagnostic colonoscopy", "place": "11", "annual_volume": 500 },
+    { "code": "73721", "description": "MRI knee without contrast", "place": "11", "annual_volume": 300 }
+  ]
+}

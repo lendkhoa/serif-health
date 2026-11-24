@@ -13,11 +13,13 @@ import {
 export class ApiRequestError extends Error {
   readonly status: number // 0 = network failure
   readonly code?: string
+  readonly details: string[]
 
-  constructor(message: string, status: number, code?: string) {
+  constructor(message: string, status: number, code?: string, details: string[] = []) {
     super(message)
     this.status = status
     this.code = code
+    this.details = details
   }
 }
 
@@ -30,17 +32,26 @@ const REQUEST_TIMEOUT_MS = 30_000
  * including timeouts. If the caller aborts `signal`, the abort error is rethrown untouched.
  */
 export async function apiGet<T>(path: string, query: Query = {}, signal?: AbortSignal): Promise<T> {
-  const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS)
-  const combined = signal ? AbortSignal.any([signal, timeout]) : timeout
   const params = new URLSearchParams()
   for (const [key, value] of Object.entries(query)) {
     if (value !== undefined && value !== null && value !== '') params.set(key, String(value))
   }
   const qs = params.toString()
+  return request<T>(qs ? `${path}?${qs}` : path, { cache: 'no-store' }, REQUEST_TIMEOUT_MS, signal)
+}
 
+/** POST JSON. Fails the same way as apiGet. */
+export function apiPost<T>(path: string, body: unknown, signal?: AbortSignal, timeoutMs = REQUEST_TIMEOUT_MS): Promise<T> {
+  const init = { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
+  return request<T>(path, init, timeoutMs, signal)
+}
+
+async function request<T>(url: string, init: RequestInit, timeoutMs: number, signal?: AbortSignal): Promise<T> {
+  const timeout = AbortSignal.timeout(timeoutMs)
+  const combined = signal ? AbortSignal.any([signal, timeout]) : timeout
   let response: Response
   try {
-    response = await fetch(qs ? `${path}?${qs}` : path, { signal: combined, cache: 'no-store' })
+    response = await fetch(url, { ...init, signal: combined })
   } catch (error) {
     if (signal?.aborted) throw error
     if (timeout.aborted) throw new ApiRequestError(TIMEOUT_MESSAGE, 0)
@@ -63,7 +74,7 @@ export async function apiGet<T>(path: string, query: Query = {}, signal?: AbortS
     const code: string | undefined = body?.error?.code
     const message =
       (code && API_ERROR_MESSAGES[code]) ?? HTTP_STATUS_MESSAGES[response.status] ?? UNKNOWN_ERROR_MESSAGE
-    throw new ApiRequestError(message, response.status, code)
+    throw new ApiRequestError(message, response.status, code, Array.isArray(body?.error?.details) ? body.error.details : [])
   }
   return body as T
 }

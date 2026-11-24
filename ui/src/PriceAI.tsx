@@ -4,8 +4,10 @@ import {
   useMantineTheme,
 } from "@mantine/core";
 import { ThemeProvider, createTheme } from "@mui/material/styles";
-import { ChatBox, createEchoAdapter } from "@mui/x-chat";
+import { ChatBox } from "@mui/x-chat";
 import { useMemo } from "react";
+import examplePrompt from "../../samples/price-ai/employer-prompt.txt?raw";
+import { priceAiAdapter } from "./priceAiAdapter";
 
 const CONVERSATION_ID = "price-ai";
 
@@ -20,14 +22,16 @@ const initialMessages = [
     parts: [
       {
         type: "text" as const,
-        text: "Hello! Ask me about your health plan or the price of a procedure.",
+        text: "Hello! Describe your plan and expected use, and I will recommend providers. Try the example prompt below.",
       },
     ],
   },
 ];
 
-// Placeholder: swap for an adapter that calls the Price AI API.
-const adapter = createEchoAdapter();
+// A placeholder cannot be sent, so the suggestion fills the composer with the same prompt.
+const suggestions = [{ value: examplePrompt, label: "Use the example prompt" }];
+const slotProps = { composerInput: { placeholder: examplePrompt, maxRows: 8 } };
+const features = { attachments: false };
 
 /** Minimal chat page for summarizing a user's plan and finding best-value providers. */
 export default function PriceAI() {
@@ -62,15 +66,21 @@ export default function PriceAI() {
     <ThemeProvider theme={muiTheme}>
       <Container size="lg" px={{ base: "sm", sm: "md" }} py="xl">
         <ChatBox
-          adapter={adapter}
+          adapter={priceAiAdapter}
+          suggestions={suggestions}
+          slotProps={slotProps}
+          features={features}
           initialConversations={initialConversations}
           initialActiveConversationId={CONVERSATION_ID}
           initialMessages={initialMessages}
           sx={{
-            height: 560,
+            height: "max(560px, calc(100vh - 180px))",
             border: "1px solid",
             borderColor: "divider",
             borderRadius: 1,
+            "& table": { display: "block", overflowX: "auto", borderCollapse: "collapse" },
+            "& th, & td": { px: 1, py: 0.5, textAlign: "left", overflowWrap: "normal", wordBreak: "normal", borderBottom: "1px solid", borderColor: "divider" },
+            "& textarea": { minHeight: "96px !important" },
           }}
         />
       </Container>

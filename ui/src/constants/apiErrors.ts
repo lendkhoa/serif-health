@@ -14,6 +14,7 @@ export const API_ERROR_MESSAGES: Record<string, string> = {
   QUERY_TOO_LONG: 'Search text must be 200 characters or fewer.',
   INVALID_JSON: 'That is not valid JSON.',
   INVALID_PLAN: 'Some plan details are missing or not valid.',
+  MISSING_CONTEXT: 'Include your plan and procedures as JSON after your question. The example shows the format.',
   BODY_TOO_LARGE: 'That input is too large.',
   NOT_FOUND: 'Nothing was found for that request.',
   ROUTE_NOT_FOUND: 'That API endpoint does not exist.',

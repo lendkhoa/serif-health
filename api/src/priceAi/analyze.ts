@@ -38,11 +38,11 @@ export const TOP_OPTIONS = 10
 const MAX_PAGES = 4 // bounds D1 queries per request: 2 per page, plus 1 for the first
 
 /** Every rate for a code, or a reason there are none to rank. */
-export async function loadCharges(db: D1Database, code: string): Promise<Loaded> {
+export async function loadCharges(db: D1Database, code: string, maxPages = MAX_PAGES): Promise<Loaded> {
   const rows: Charge[] = []
   let name: string | null = null
   let cursor: string | null = null
-  for (let pages = 0; pages < MAX_PAGES; pages++) {
+  for (let pages = 0; pages < maxPages; pages++) {
     const q = new URLSearchParams({ code })
     if (cursor) q.set('cursor', cursor)
     let body: Awaited<ReturnType<typeof charges>>
