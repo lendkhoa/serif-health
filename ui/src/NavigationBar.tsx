@@ -7,7 +7,6 @@ import {
   Menubar,
   Menu,
   Paper,
-  Text,
   Tooltip,
   useComputedColorScheme,
   useMantineColorScheme,
