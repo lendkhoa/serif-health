@@ -1,85 +1,65 @@
-# Serif Health
-## Price Transparency Explorer
-[Demo App](https://serif-health-assignment.khoale.workers.dev/app)
+# Serif Health: Price Transparency Explorer
 
-A small full-stack app for searching an insurer's negotiated rates by billing code.
+[Demo app](https://serif-health-assignment.khoale.workers.dev/app)
 
-## Goal
+A full-stack app for exploring an insurer's negotiated rates, built on a CMS Transparency in Coverage file from Centene / Fidelis.
 
-I take a CMS Transparency in Coverage index file (Centene / Fidelis), use it to pick an in-network rate file, and make that file searchable.
+- **Explore data**
+  - **All rates:** browse every rate, or search a billing code and narrow it by NPI, EIN, setting and billing class.
+  - **Compare businesses:** chart what each business is paid for one code.
+  - **One business:** a business's rates against the median, per code.
+- **Price AI:** recommends in-network providers for an employer's plan and expected use, with estimated savings and where the data is too thin to decide. Prices, rankings and savings are computed; a model only writes the summary.
 
-1. **Index**: Find an in-network rate file URL in the index.
-2. **Ingest**: Fetch the rate file and flatten its nested JSON into simple rows: billing code, description, provider NPI/EIN, negotiated rate, and source file.
-3. **API**: `GET /search?code=<billing_code>&npi=<npi>&ein=<ein>`. The billing code is required; NPI and EIN are optional filters.
-4. **UI**: Search by billing code, narrow by NPI/EIN, and view the results in a clean table.
-5. **Resilience**: Show fetch and parse errors in the UI instead of crashing.
+## Quick start
 
-## Scope
+Requires Node 22.12 or later (`nvm use`). Loading a rate file also needs Python 3 and [`jq`](https://jqlang.org).
 
-- Data is kept in memory, with no database.
-- The rate file is picked by hand from the index.
-- I timeboxed the work to about 3 hours.
-
-## Requirements alignment
-
-Status of this README and project against the take-home assignment.
-
-| Requirement / deliverable | Status | Notes |
-|---|---|---|
-| Use index to find an in-network file URL | ⚠️ Partial | Stated as a goal, but the README does not yet say which index entry or file URL was chosen, or why. |
-| Fetch and ingest the rate file, normalise | ⚠️ Partial | Ingest flow is documented (key paths, schema, `make migrate-file-to-d1`), but it reads a local `FILE=` path and does not fetch the URL. |
-| API: required code, optional NPI/EIN | ⚠️ Partial | Specified as a design; only `/api/health` is implemented. |
-| UI: code input, NPI/EIN narrowing, formatted results | ⚠️ Partial | Goal and design are stated; implemented status is not. |
-| Basic error handling | ❌ Gap | Listed as goal #5 only. No error contract (status codes, validation, response shape). |
-| README: install and run | ❌ Gap | Setup is "Coming soon". |
-| README: architecture and data flow | ❌ Gap | No short description or diagram. |
-| README: assumptions, decisions, tradeoffs | ⚠️ Partial | Scattered (in-memory won't scale, query strategy); not consolidated. |
-| README: what I would improve with more time | ❌ Gap | Missing. |
-| Honest limitations | ❌ Gap | Missing, including how much of the file was loaded (the ingest supports `LIMIT_ITEMS` / `LIMIT_PROVIDERS`). |
-
-### Deviations to resolve
-- **Scope vs. implementation:** Scope says "in memory, no database" but the project uses D1. Allowed by the assignment as an extension, so document it as a deliberate decision and update Scope.
-- **API contract:** Goal uses `/search?...&ein=`; the design uses `/api/search?...&tin=`. Keep `ein` as the public name (`tin` at most as an alias) and one consistent path.
-- **Scope creep:** The API design (summary, suggest, org/provider views, FTS5, flat table) exceeds the ~3 hour timebox. Mark it as planned or move it under "what I would improve".
-- **Planned vs. shipped:** The endpoint table lists endpoints that do not exist yet. Add a Status column.
-- **Manual fetch:** The rate file is downloaded by hand. Either script the download or state this explicitly.
-
-### Priority gaps
-1. Setup: prerequisites (Node 22 via `nvm`, Python for the ingest script, Wrangler login or `LOCAL=1`) and the `make install` / `d1-migrate` / `migrate-file-to-d1` / `dev` sequence.
-2. Architecture and data flow: index → chosen file URL → ingest script → D1 → Worker API → React UI.
-3. Source traceability: name the index URL, the chosen in-network file (plan, URL, `last_updated_on`); `source_files` is only proposed, so rows do not yet carry the source file.
-4. Data coverage: state whether the load was full or partial.
-5. Error handling: 400 for missing or invalid `code`, validate NPI (10 digits) and EIN (9 digits, strip dashes), distinguish empty results from errors, and add UI error and empty states.
-6. Edge cases: leading-zero and alphanumeric codes (`0001U`, `J1745`); the same code under different `billing_code_type`; providers via `provider_references` vs inline `provider_groups`; dedupe across multiple references.
-7. UI/UX: responsive layout, search and filter controls, loading/empty/error states.
-8. Tradeoffs and improvements: in-memory vs D1, flat table, FTS, summaries, exports, multi-file ingest, trends.
-
-### Planned README structure
-```
-Overview + demo link
-Quick start (install, run, ingest)
-Architecture & data flow
-Data source & file selection (index URL, chosen file, last_updated_on, coverage)
-API (implemented) | Planned endpoints
-Error handling & edge cases
-Assumptions, decisions, tradeoffs
-Limitations / what I would improve
-Timeline / lab notes
+```bash
+make install
+make d1-migrate LOCAL=1
+# Download the rate file (see Data source), then:
+make migrate-file-to-d1 LOCAL=1 FILE=path/to/in-network.json SOURCE_URL='https://...' LAST_UPDATED_ON=2026-08-31
+make build-summaries LOCAL=1
+make dev    # UI on http://localhost:5173, API on :8787
 ```
 
-## Setup
+`LOCAL=1` uses a local D1 database; leave it out to use the remote one. The AI bindings in `api/wrangler.jsonc` run on Cloudflare even during local development, so run `npx wrangler login` first. The VPC Service id there belongs to this project's account: replace it with your own, or remove `vpc_services`.
 
-_Coming soon._
+- `npm test -w api` runs the API tests and `npm run typecheck -w api` checks its types.
+- `make deploy` builds the UI and deploys one Worker that serves both.
+- `make help` lists every command.
 
-# Timeline
-2026-11-22 Setup scaffold, backend and ui
-![setup-project](./assets/2026-11-22.png)
+## Architecture
 
-## Understanding the structure
-Each JSON file is very large so the first step is understanding the key paths and the schema skeleton of the file.
-→ Add `make explain-file` command to print out the unique key paths
+```
+Centene index -> rate file (JSON) -> scripts/migrate_file.py -> D1
+                                                                |
+                            React UI  <->  Worker API (/api/*) -+
+                                                |
+                             Ollama (VPC Service + Tunnel) -> Workers AI fallback
+```
+
+| Path | Contents |
+|---|---|
+| `api/` | Cloudflare Worker, D1 migrations and tests |
+| `ui/` | React, Mantine and MUI X Chat, built with Vite |
+| `scripts/` | Schema explorer, streaming ingest and summary SQL |
+| `samples/price-ai/` | Example Price AI inputs |
+
+## Data source
+
+The [index](https://www.centene.com/content/dam/centene/Centene%20Corporate/json/DOCUMENT/2026-08-31_fidelis_index.json) lists two in-network files, `fidelis-es` and `fidelis-ex`. The app uses [`fidelis-es`](https://www.centene.com/content/dam/centene/Centene%20Corporate/json/DOCUMENT/2026-08-31_centene-management-company-llc_fidelis-es_in-network.json), last updated 2026-08-31, and loads all of it:
+
+| Billing items | Prices | Provider groups | TINs | NPIs |
+|---|---|---|---|---|
+| 2,530 | 359,853 | 1,908 | 4,306 | 47,129 |
+
+### Understanding the structure
+
+Each file is very large, so the first step was listing its key paths with `make explain-file`:
+
 ```txt
-➜  serif-health git:(main) ✗ make explain-file FILE=/path/2026-08-31_centene-management-company-llc_fidelis-es_in-network.json
+$ make explain-file FILE=path/to/2026-08-31_centene-management-company-llc_fidelis-es_in-network.json
 in_network[].billing_code: string
 in_network[].billing_code_type: string
 in_network[].billing_code_type_version: string
@@ -105,78 +85,89 @@ provider_references[].provider_groups[].tin.value: string
 reporting_entity_name: string
 reporting_entity_type: string
 version: string
-
 ```
 
-→ In-memory won't scale. A 176MB, 3.3M-line JSON file becomes roughly 1–2GB of Python objects. Loading it into memory is slow and gets re-done every session. A persisted, indexed store is better.
+A 176 MB, 3.3M-line JSON file becomes roughly 1-2 GB of Python objects, and loading it into memory would have to be repeated every session. A persisted, indexed store is the better fit.
 
-## Makefile
-### Make help
-```bash
-➜  serif-health git:(main) ✗ make help
-Targets:
-  install  Install API and UI dependencies (use Node 22: nvm use)
-  dev      Run the Workers API (:8787) and the React UI with hot reload
-  deploy   Build the UI and deploy the Worker (serves API + UI)
-  explain-file  Print unique key paths of a large JSON file (FILE=path/to.json)
-  d1-migrate  Apply api/migrations to D1 (add LOCAL=1 for local)
-  migrate-file-to-d1  Load a big JSON file into D1 (FILE=path [LIMIT_ITEMS=n] [LIMIT_PROVIDERS=n] [START_ITEM=n] [LOCAL=1])
-  nuke-dev-db  Delete ALL rows from the D1 tables, keeping the schema (LOCAL=1 for local; CONFIRM=yes skips the prompt)
-  help     Show this help message
-```
+### Ingest
 
-### Migrate the downloaded JSON to D1 sqlite database
-```bash
-serif-health git:(main) ✗ make migrate-file-to-d1 FILE=/<PATH>2026-08-31_centene-management-company-llc_fidelis-es_in-network.json
+`make migrate-file-to-d1` streams the file through `jq`, so it is never held in memory, and loads it into D1 in batches. Inserts use `INSERT OR IGNORE`, so a load can be rerun or resumed (`START_ITEM=`). `LIMIT_ITEMS=` and `LIMIT_PROVIDERS=` load a subset. A full load took about four minutes:
+
+```txt
 Providers (provider_references[])
-  groups: 1908 (86/s)))
+  groups: 1908
 Billing items (in_network[])
-  items: 2530 (11/s)
+  items: 2530
   last item_id processed: 2529
 Done in 243s, 73 batches.
 ```
 
+| Table | One row per |
+|---|---|
+| `billing_items` | Billing item |
+| `negotiated_prices` | Price on a billing item |
+| `rate_provider_groups` | Link from a rate entry to a provider group |
+| `provider_tins` | TIN in a provider group |
+| `provider_npis` | NPI under a TIN |
+| `source_files` | Loaded file: name, URL and last updated date |
+| `code_summary` | Precomputed statistics per billing code (`make build-summaries`, after each ingest) |
 
-## API design
+## API
 
-### Endpoints
-| API | Note |
+| Endpoint | Description |
 |---|---|
 | `GET /api/health` | Liveness check. |
-| `GET /api/search?code=&npi=&ein=&setting=&class=&sort=&limit=&cursor=` | Main search. `code` is required (exact billing code); `npi`, `tin`, `setting`, `class` are optional filters. Keyset-paginated (`limit` default 100, max 500) with an opaque cursor that includes the sort key. Returns `data` and `next_cursor`, with no `COUNT(*)`. |
-| `GET /api/summary?code=` | Context for a code: median, P25–P75, min–max, provider/org counts, histogram buckets, and breakdown by setting / billing class / negotiated type. Served from a precomputed `code_summary`. Feeds the KPI strip and charts. |
-| `GET /api/suggest?q=` | Omnibox autocomplete. Classifies the input (code, NPI, TIN, free text) and returns grouped matches (codes, organisations, providers) with counts. Free text uses FTS5 over descriptions and business names. |
-| `GET /api/codes/:code` | Billing-code metadata (type, name, descriptions) without expanding rates or providers. |
-| `GET /api/providers?npi=&tin=&limit=&cursor=` | Provider identity lookup: NPIs and the TINs they belong to. Also used to narrow the main search. |
-| `GET /api/org/:tin` | Organisation view: codes the TIN is priced on, with its rate vs. the market median per code. |
-| `GET /api/provider/:npi` | Provider view: the TINs for an NPI and its rates per code. |
+| `GET /api/search?code=&npi=&ein=&setting=&class=&sort=&limit=&cursor=` | Main search. `code` is required (exact match); the other filters are optional. `sort` is `rate_desc` (default) or `rate_asc`. One row per price and TIN, with the first 25 NPIs and an `npi_count`. |
+| `GET /api/rates?limit=&cursor=` | Every rate, in file order. |
+| `GET /api/charges?code=&limit=&cursor=` | Every dollar rate per business for one code, for charts. Returns 2,000 rows a page unless `limit` is given. |
+| `GET /api/business?name=&limit=&cursor=` | One business's rate against the median business, per exact variant (code, service, place, modifier and class). Up to 50 codes a page. |
+| `GET /api/summary?code=` | Per-code statistics from `code_summary`: percentiles, range, counts, histogram and breakdowns. All variants of the code are pooled. Returns 404 until summaries are built. |
+| `GET /api/suggest?q=` | Prefix suggestions: billing codes, organization names, and an exact 10-digit NPI. |
+| `GET /api/codes/:code` | Billing-code metadata. |
+| `GET /api/providers?npi=&ein=&groups=&limit=&cursor=` | NPIs and the TINs they belong to. Needs `npi` or `ein`; `groups` narrows to provider group ids. |
+| `GET /api/org/:ein?limit=&cursor=` | Codes a TIN is priced on, against the market median per code. |
+| `GET /api/provider/:npi?limit=&cursor=` | TINs for an NPI, and its rates per code. |
 | `POST /api/price-ai/analyze` | Prices a plan's procedures (body: see `samples/price-ai/`, 16 KB max, 1-5 procedures). Each result has the 10 cheapest businesses with what the member and plan pay, plus `rates` (median, low, high) across every business in the ranked variant. A procedure without a usable code gets `suggestions` to pick from. No LLM. An invalid plan returns `INVALID_PLAN` with one `details` entry per problem. |
-| `POST /api/price-ai/recommend` | Recommends providers for an employer. Body: `{ "message" }`, a question followed by the plan as JSON (see `samples/price-ai/employer-prompt.txt`, 1-8 procedures). Procedures with too few businesses are excluded, then the fewest providers within the tie tolerance of the lowest annual spend are chosen. Returns the shortlist, spend and savings against the median, the employer/employee split and each procedure's outcome. No LLM. |
+| `POST /api/price-ai/recommend` | Recommends providers for an employer. Body: `{ "message" }`, a message containing the plan as JSON (see `samples/price-ai/employer-prompt.txt`, 1-8 procedures). Procedures with too few businesses are excluded, then the fewest providers within the tie tolerance of the lowest annual spend are chosen. Returns the shortlist, spend and savings against the median, the employer/employee split and each procedure's outcome. No LLM. |
 | `POST /api/price-ai/explain` | Same body. Recomputes the recommendation and has the LLM summarize it. A summary containing a number that is not in the results is replaced by a fixed template, as it is when the AI is offline (`source` says which). |
 | `GET /api/price-ai/codes?q=` | Finds codes by name, e.g. `MRI knee`. Returns up to 10 priced codes, best match first. Revenue codes are left out because each covers many services. |
 | `GET /api/price-ai/status` | Calls Ollama through the tunnel and reports `up`, `model_missing`, `bad_response`, `timeout`, `unreachable` or `not_configured`. Always 200; runs no model. |
 
-**Status:** all endpoints above are implemented (`api/src/routes.ts`). Notes:
-- `ein` is the public name; `tin` is accepted as an alias.
-- `/api/summary` reads the precomputed `code_summary` table. Rebuild it after every ingest with `make build-summaries` (`scripts/build_code_summary.sql`); until then it returns 404. Counts only include prices with a non-null rate and the orgs/NPIs attached to them.
-- `/api/suggest` is prefix-only (code prefix, organisation name/EIN prefix, exact NPI), so each lookup is an indexed range scan. Name search is `/api/price-ai/codes`, which scores the ~1,100 priced non-revenue codes in the Worker; FTS5 is future work.
-- Search cursors embed a signature of the query (code, NPI, EIN, setting, class, sort); a cursor replayed against a different query is rejected with `INVALID_CURSOR`.
-- Search rows include `service_code`, `billing_code_modifier`, the first 25 `npis` (plus `npi_count`) and the source file (`source_file`, `source_file_url`, `source_last_updated_on`). Ingest registers a single source file per database; pass `SOURCE_URL=` / `LAST_UPDATED_ON=` to `make migrate-file-to-d1` to record them.
-- Errors share one shape, `{ "error": { "code", "message" } }`, with codes in `api/src/errors.ts`; database failures return `DB_ERROR` (500).
-- Tests: `npm test -w api` (Node 22).
+- **Pagination:** pages default to 100 rows (50 for `org`, `provider` and `business`) and `limit` goes up to 500 (50 for `business`). Follow `next_cursor` until it is null. A cursor works only with the query that produced it; otherwise the API returns `INVALID_CURSOR`.
+- **Validation:** codes are 1-20 letters or digits, so `0001U` and `J1745` work. NPIs are 10 digits. EINs are 9 digits, with or without a dash. `tin` is accepted as an alias for the `ein` query parameter.
+- **Errors:** every error has the shape `{ "error": { "code", "message" } }`, with codes in `api/src/errors.ts`. `INVALID_PLAN` adds `details`. Database failures return `DB_ERROR` (500). The UI shows a readable message for each code.
 
-### Query strategy
-- **Pick the entry point by filter.** Start from the most selective indexed side:
-  - `npi` + `tin`: `provider_npis` filtered by both (most selective, preferred).
-  - `npi` only: `provider_npis → rate_provider_groups → negotiated_prices → billing_items → provider_tins`.
-  - `tin` only: `provider_tins → provider_npis → rate_provider_groups → negotiated_prices → billing_items`.
-  - code only: `billing_items (billing_code) → negotiated_prices → …`, always paginated.
-- **Keyset pagination, never `OFFSET`.** Order by a deterministic key and page with `WHERE (k1, k2, …) > (?, ?, …)`. The cursor is an opaque, validated base64url JSON object. For rate-sorted views the key is `(negotiated_rate DESC, <unique tiebreaker>)`.
-- **`limit + 1` instead of `COUNT(*)`.** Fetch one extra row to decide whether a next page exists, and return `next_cursor` only then. Approximate totals come from `code_summary`.
-- **Move join cost to ingest.** The 5-way join fans out (one rate entry × provider groups × TINs × NPIs). Build a denormalised `rates_flat` (code, TIN, business name, rate, setting, class, type, expiration, NPI count) with indexes `(billing_code, negotiated_rate DESC, id)` and `(tin_value, billing_code)`, so search, sorting and the org/provider views are single indexed range scans.
-- **One row per (TIN, rate) for the UI.** Return an NPI count and expand NPIs on demand. Return per-NPI rows only when the caller filters by `npi`.
-- **Covering indexes.** `provider_npis (npi, provider_group_id, tin_value)` and `provider_tins (tin_value, provider_group_id)`; `billing_items (billing_code, item_id)`.
-- **Precompute summaries.** Data is immutable per source file, so percentiles, histogram buckets and counts are computed at ingest into `code_summary` and cached at the edge.
-- **Provenance.** Add a `source_files` table and a `source_file_id` reference so every row can report its source file.
-- **Guardrails.** Cap `limit`, warn when a code-only result set is very large, normalise TIN (strip dashes), and dedupe rows that arise via multiple `provider_references`.
-- **Verify, then optimise.** Run `EXPLAIN QUERY PLAN` on each branch against the real data. Row-value keyset comparisons may need expanding to `OR` conditions if the planner skips the index.
+## Price AI
+
+1. The JSON plan is read from the message and validated.
+2. Each procedure is priced within a single exact variant, so unlike services are never compared. Procedures with too few businesses are excluded.
+3. The fewest providers within the tie tolerance of the lowest annual spend are chosen by exact search.
+4. A model summarizes the computed results. A summary with a number not in those results is replaced by a fixed template.
+
+Models sit behind one `Provider` interface (`api/src/priceAi/llm.ts`): Ollama on a private machine through a Cloudflare VPC Service and Tunnel, then Workers AI if it does not answer. The tables work with no model at all.
+
+Savings assume today's spend is at the median rate and that each provider can take every visit. The rate file has no quality, location or capacity data.
+
+## Decisions and tradeoffs
+
+- **D1 over in-memory data:** a persisted, indexed store avoids parsing the file again.
+- **Normalized tables:** they mirror the file and make ingest simple and repeatable, at the cost of joins at read time.
+- **Keyset pagination, no `OFFSET` or `COUNT(*)`:** pages are ordered by a unique key, and one extra row shows whether there is a next page.
+- **Keys first, details second:** search picks a page from keys alone, then looks up names and NPIs for only those rows.
+- **One row per price and TIN:** TINs reached through several provider references are deduplicated, and NPIs are listed on demand.
+- **Medians over business rates:** charts count each business once, at the median of its own rates.
+- **No HTTP caching:** responses are `no-store`, because nothing can clear browser caches after an ingest. The UI keeps its own in-memory cache for 10 minutes.
+
+## What's next
+
+- Automate index discovery, downloads and multi-file ingest.
+- Add a flat rates table if join costs grow, and full-text search over descriptions and names.
+- Read plans from plain language, with the user confirming each value.
+- Support frontier models by API key behind the same `Provider` interface.
+- Add quality, location and specialty data to the recommendations.
+
+## Timeline
+
+2026-11-22: scaffold for the API and UI.
+
+![Project setup](./assets/2026-11-22.png)

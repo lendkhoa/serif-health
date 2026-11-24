@@ -11,7 +11,7 @@ import {
   useComputedColorScheme,
   useMantineColorScheme,
 } from '@mantine/core'
-import { HandWavingIcon, MagnifyingGlass, Moon, Sun } from '@phosphor-icons/react'
+import { GithubLogo, HandWavingIcon, MagnifyingGlass, Moon, Sun } from '@phosphor-icons/react'
 import { useEffect, useState } from 'react'
 import { apiGetWithToast } from './api.ts'
 import type { AppPage } from './App.tsx'
@@ -60,6 +60,19 @@ export default function NavigationBar({ page, onNavigate }: NavigationBarProps) 
           </Menubar.Menu>
 
           <Group gap="xs" wrap="nowrap">
+            <Tooltip label="GitHub">
+              <ActionIcon
+                component="a"
+                href="https://github.com/lendkhoa/serif-health"
+                target="_blank"
+                rel="noreferrer"
+                variant="subtle"
+                size="lg"
+                aria-label="View the project on GitHub"
+              >
+                <GithubLogo size={20} aria-hidden="true" />
+              </ActionIcon>
+            </Tooltip>
             <Tooltip label="Search">
               <ActionIcon variant="subtle" size="lg" aria-label="Search" onClick={() => onNavigate('search')}>
                 <MagnifyingGlass size={20} aria-hidden="true" />
