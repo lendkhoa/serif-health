@@ -1,0 +1,14 @@
+{
+  "plan": {
+    "name": "Sample Bronze (synthetic)",
+    "insurer": "Fidelis Care",
+    "deductible": { "total": 400, "met": 100 },
+    "out_of_pocket_max": { "total": 1000, "met": 600 },
+    "coinsurance": 0.3
+  },
+  "procedures": [
+    { "code": "45378", "description": "Diagnostic colonoscopy", "place": "11" },
+    { "code": "80053", "description": "Comprehensive metabolic panel" },
+    { "code": "93000", "description": "Electrocardiogram" }
+  ]
+}

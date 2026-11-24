@@ -1,0 +1,14 @@
+{
+  "plan": {
+    "name": "Sample Gold (synthetic)",
+    "insurer": "Fidelis Care",
+    "deductible": { "total": 500, "met": 500 },
+    "out_of_pocket_max": { "total": 4000, "met": 900 },
+    "coinsurance": 0.1
+  },
+  "procedures": [
+    { "code": "97110", "description": "Physical therapy exercises", "place": "11", "modifiers": ["GP"] },
+    { "description": "MRI knee without contrast" },
+    { "code": "72148", "description": "MRI lumbar spine without contrast" }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "plan": {
+    "name": "Sample Silver (synthetic)",
+    "insurer": "Fidelis Care",
+    "deductible": { "total": 2000, "met": 350 },
+    "out_of_pocket_max": { "total": 8000, "met": 350 },
+    "coinsurance": 0.2
+  },
+  "procedures": [
+    { "code": "90837", "description": "60 minute psychotherapy, telehealth", "place": "02", "modifiers": ["95"] },
+    { "code": "99213", "description": "Established patient office visit", "place": "11", "modifiers": ["25"], "copay": 30 }
+  ]
+}

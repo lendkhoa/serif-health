@@ -1,6 +1,6 @@
 import { useHash } from '@mantine/hooks'
 
-/** Each lens is one way of looking at the same rates. To add one: list it here and render it in App. */
+/** Each lens is one way of looking at the same rates. To add one: list it here and render it in ExploreData. */
 export const LENSES = [
   { id: 'rates', label: 'All rates' },
   { id: 'charges', label: 'Compare businesses' },
